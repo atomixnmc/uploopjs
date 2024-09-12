@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["ES2017", "DOM"],
+    "checkJs": true
+  },
+  "exclude": ["node_modules", "**/node_modules/*", "dist/*"]
+}

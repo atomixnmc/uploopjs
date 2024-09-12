@@ -1,0 +1,27 @@
+{
+  "name": "uploopjs",
+  "private": true,
+  "version": "0.0.1",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/uploopjs.umd.cjs",
+  "module": "./dist/uploopjs.js",
+  "exports": {
+    ".": {
+      "import": "./dist/uploopjs.js",
+      "require": "./dist/uploopjs.umd.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "vite": "^5.2.0",
+    "vitest": "^1.6.0"
+  }
+}
