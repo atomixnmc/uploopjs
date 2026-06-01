@@ -46,7 +46,7 @@ function createTestExec(loop) {
         base.hooks.postReplace(target, snap)
         // simulate binding + resource restore
         if (resources.restore && snap._resources) {
-          resources.restore(target, snap._resources)
+          resources.restore(snap._resources, target)
         }
       }
     },
@@ -100,11 +100,11 @@ describe('html integration', () => {
     const exec = createTestExec({ send: () => {}, get: () => ({}) })
     exec._resources.register('canvas', { save: () => ({}), restore: () => {} })
 
-    // Should not throw with null
+    // snap=null → guard rejects
     expect(() => exec._resources.restore(null, null)).not.toThrow()
-    // Should not throw with plain object
+    // snap={} (plain object) → guard rejects
     expect(() => exec._resources.restore({}, null)).not.toThrow()
-    // Should not throw with undefined
+    // snap=undefined → guard rejects
     expect(() => exec._resources.restore(undefined, null)).not.toThrow()
   })
 })

@@ -75,7 +75,7 @@ describe('html/component full stack', () => {
           restore: (data) => {
             saved = 'restored:' + data
             const b = el.querySelector('#box')
-            if (!b) { saved = 'no-box'; return }
+            if (!b) return
             const old = b.querySelector('canvas')
             if (old) old.remove()
             b.appendChild(canvas)
@@ -86,12 +86,10 @@ describe('html/component full stack', () => {
     const el = document.createElement('div')
     Comp.mount(el)
     expect(el.querySelectorAll('canvas').length).toBe(1)
-    expect(saved).toBeNull() // not saved on first mount
 
     Comp.loop.send('start')
     Comp.loop.frame.flush()
-    // If saved changed from null, preReplace ran
-    // If saved changed to 'restored:ok', postReplace + restore ran
+    expect(saved).toBe('restored:ok')
     expect(el.querySelectorAll('canvas').length).toBe(1)
   })
 

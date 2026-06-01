@@ -52,7 +52,7 @@ function createWiredDOMExecution(loop, resources) {
         processUploopAttributes(target, ctx)
 
         if (resources.restore && snapshot._resources) {
-          resources.restore(target, snapshot._resources)
+          resources.restore(snapshot._resources, target)
         }
 
         processVirtualContainers(target, ctx)

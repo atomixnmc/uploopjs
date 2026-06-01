@@ -48,7 +48,7 @@ function wrapComponent(name, config) {
           applyBindings(target, snap._bindings, () => {}, {})
         }
         if (resources.restore && snap._resources) {
-          resources.restore(target, snap._resources)
+          resources.restore(snap._resources, target)
         }
       }
     }
