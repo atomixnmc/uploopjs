@@ -317,8 +317,8 @@ const router = createRouter(
     "blog/:id": { view: "detail" },
     "blog/:id/edit": { view: "edit" },
   },
-  { useHash: false },
-); // path-based for blog sub-navigation
+  { useHash: true },
+); // hash-based to avoid conflicting with demo app URL
 
 // Initialize blog path
 Blog.loop.send("navigate", "blog");
