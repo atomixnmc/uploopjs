@@ -128,14 +128,52 @@ export function component(name, config = {}, lifecycleMethods = {}) {
   return desc
 }
 
-// Re-export core's createComponentType, wrapped through html's component()
+// Wrap core's createComponentType through html's component()
+// so compose injection + dom execution apply to typed components.
 export function createComponentType(typeDefaults = {}) {
   const coreFactory = coreCreateComponentType(typeDefaults)
   return function createTyped(config = {}) {
-    // Delegate to html's component() so compose injection + dom execution apply
-    return component(config.name || typeDefaults.name || 'Custom', { ...typeDefaults, ...config })
+    // Use core's deep merge for state/update/effect/classes,
+    // then pass through html's component() for DOM wiring.
+    // Replicate core's merge logic here:
+    const merged = {
+      ...typeDefaults,
+      ...config,
+      state: { ...(typeDefaults.state || {}), ...(config.state || {}) },
+      update: { ...(typeDefaults.update || {}), ...(config.update || {}) },
+      effect: { ...(typeDefaults.effect || {}), ...(config.effect || {}) },
+      classes: { ...(typeDefaults.classes || {}), ...(config.classes || {}) },
+      ...(config.compose != null ? { compose: config.compose } : typeDefaults.compose != null ? { compose: typeDefaults.compose } : {}),
+      ...(config.computeParts != null ? { computeParts: config.computeParts } : typeDefaults.computeParts != null ? { computeParts: typeDefaults.computeParts } : {}),
+      ...(config.frame != null ? { frame: config.frame } : typeDefaults.frame != null ? { frame: typeDefaults.frame } : {}),
+      ...(config.execution != null ? { execution: config.execution } : typeDefaults.execution != null ? { execution: typeDefaults.execution } : {})
+    }
+    // Chain mount/unmount hooks
+    if (typeDefaults.mount || config.mount) {
+      const base = typeDefaults.mount, user = config.mount
+      merged.mount = (el, ctx) => { if (base) base(el, ctx); if (user) user(el, ctx) }
+    }
+    if (typeDefaults.unmount || config.unmount) {
+      const base = typeDefaults.unmount, user = config.unmount
+      merged.unmount = (el, ctx) => { if (user) user(el, ctx); if (base) base(el, ctx) }
+    }
+    // Merge cycle methods
+    const baseCycle = typeDefaults.cycleMethods || {}
+    const userCycle = config.cycleMethods || {}
+    merged._cycleMethods = {
+      composition: userCycle.composition || baseCycle.composition || 'createHtml',
+      afterFrame: [...(baseCycle.afterFrame || []), ...(userCycle.afterFrame || [])],
+      render: 'render' in userCycle ? userCycle.render : (baseCycle.render ?? null),
+      draw: 'draw' in userCycle ? userCycle.draw : (baseCycle.draw ?? null)
+    }
+    // Extract custom methods
+    const customMethods = {}
+    const reservedKeys = ['state','update','effect','mount','unmount','view','name','classes','compose','computeParts','frame','execution']
+    for (const key of Object.keys(config)) {
+      if (!reservedKeys.includes(key) && typeof config[key] === 'function') {
+        customMethods[key] = config[key]
+      }
+    }
+    return component(config.name || typeDefaults.name || 'Custom', merged, customMethods)
   }
 }
-
-// Keep core factory accessible for edge cases
-createComponentType._core = coreCreateComponentType
