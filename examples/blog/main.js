@@ -247,10 +247,15 @@ const Blog = component("Blog", {
 
   update: {
     navigate: (s, path) => {
-      // Update router state
       router.send("navigate", path);
       const r = router.match();
-      return { ...s, params: r.params || {}, path: router.getCurrentPath() };
+      return {
+        ...s,
+        params: r.params || {},
+        path: router.getCurrentPath(),
+        editTitle: null,
+        editBody: null,
+      };
     },
     search: (s, q) => ({
       ...s,

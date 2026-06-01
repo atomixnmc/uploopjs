@@ -152,7 +152,10 @@ export function createDOMExecution() {
         if (el) {
           el.focus()
           if (selectionStart >= 0 && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-            el.setSelectionRange(selectionStart, selectionEnd)
+            const t = (el.type || 'text').toLowerCase()
+            if (t !== 'checkbox' && t !== 'radio' && t !== 'submit' && t !== 'button' && t !== 'reset' && t !== 'image') {
+              try { el.setSelectionRange(selectionStart, selectionEnd) } catch (e) {}
+            }
           }
         }
       }

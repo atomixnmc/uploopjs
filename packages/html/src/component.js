@@ -123,5 +123,14 @@ export function component(name, config = {}, lifecycleMethods = {}) {
   return desc
 }
 
-// Re-export core's createComponentType
-export { coreCreateComponentType as createComponentType }
+// Re-export core's createComponentType, wrapped through html's component()
+export function createComponentType(typeDefaults = {}) {
+  const coreFactory = coreCreateComponentType(typeDefaults)
+  return function createTyped(config = {}) {
+    // Delegate to html's component() so compose injection + dom execution apply
+    return component(config.name || typeDefaults.name || 'Custom', { ...typeDefaults, ...config })
+  }
+}
+
+// Keep core factory accessible for edge cases
+createComponentType._core = coreCreateComponentType
