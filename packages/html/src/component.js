@@ -86,7 +86,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       return snap
     },
     restore(snap, root) {
-      if (!snap) return
+      if (!snap || typeof snap.has !== 'function') return
       for (const [n, h] of this._map) {
         if (h.restore && snap.has(n)) try { h.restore(snap.get(n), root) } catch (e) {}
       }
