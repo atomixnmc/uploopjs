@@ -101,12 +101,17 @@ export function component(name, config = {}, lifecycleMethods = {}) {
 
   // Inject html into the view context
   const origView = config.view
+  const origCompose = config.compose
   const wrappedConfig = {
     ...config,
     execution: execFactory,
     view: origView && typeof origView === 'function'
       ? (state, ctx) => origView(state, { ...ctx, html })
-      : origView
+      : origView,
+    // Inject componentTag as 'html' into compose context
+    compose: origCompose && typeof origCompose === 'function'
+      ? (ctx) => origCompose({ ...ctx, html: componentTag(config.classes || {}) })
+      : origCompose
   }
 
   const desc = coreComponent(name, wrappedConfig, lifecycleMethods)

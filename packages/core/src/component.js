@@ -59,13 +59,14 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     render: renderFn,
     draw: drawFn,
     frame: frameMode,
-    execution: rawExec            // v0.0.3: execution target or factory
+    execution: rawExec            // v0.0.3: execution target or factory (optional)
   } = config
 
   if (!rawExec) {
-    throw new Error(
-      `[Uploop] component("${name}") requires an execution target. ` +
-      `Import { domExecution } from '@uploop/html' or use createDOMExecution().`
+    console.warn(
+      `[Uploop] component("${name}") created without an execution target. ` +
+      `The component will not render until an execution target is provided. ` +
+      `Use createDOMExecution() or wrap with @uploop/html's component().`
     )
   }
 
@@ -78,6 +79,16 @@ export function component(name, config = {}, lifecycleMethods = {}) {
 
   // execution can be a target object or a factory (loop) => target
   const exec = typeof rawExec === 'function' ? rawExec(loop) : rawExec
+
+  // Fallback no-op execution (component works but doesn't render to DOM)
+  const _exec = exec || {
+    strategy: 'replace',
+    render: (t) => String(t),
+    replace: () => {},
+    mount: () => () => {},
+    unmount: () => {},
+    hooks: {}
+  }
 
   loop.registerNode('view', { type: 'view', dependsOn: ['state'] })
   if (view) loop.registerEdge('state', 'view')
