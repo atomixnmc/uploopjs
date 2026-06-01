@@ -270,12 +270,15 @@ const Blog = component("Blog", {
     setEditTitle: (s, v) => ({ ...s, editTitle: v }),
     setEditBody: (s, v) => ({ ...s, editBody: v }),
     saveEdit: (s) => {
-      // In a real app this would persist; for demo just go back
+      // Update the post in-place so detail view shows edited content
+      const post = POSTS.find((p) => p.id === s.params?.id);
+      if (post && s.editTitle) post.title = s.editTitle;
+      if (post && s.editBody) post.body = s.editBody;
       return {
         ...s,
         editTitle: null,
         editBody: null,
-        path: "blog/" + s.params.id,
+        path: "blog/" + (s.params?.id || ""),
       };
     },
   },
