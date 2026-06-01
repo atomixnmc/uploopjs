@@ -99,7 +99,8 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     return createWiredDOMExecution(loop, resources)
   }
 
-  // Inject html into the view context
+  // Inject html into the view context, and wire mount hooks to
+  // the wrapper's resource registry (not core's separate _resources).
   const origView = config.view
   const origCompose = config.compose
   const wrappedConfig = {
@@ -108,18 +109,22 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     view: origView && typeof origView === 'function'
       ? (state, ctx) => origView(state, { ...ctx, html })
       : origView,
-    // Inject componentTag as 'html' into compose context
     compose: origCompose && typeof origCompose === 'function'
       ? (ctx) => origCompose({ ...ctx, html: componentTag(config.classes || {}) })
-      : origCompose
+      : origCompose,
+    // Rewire mount/unmount to use wrapper's resources.register
+    // (core has its own _resources; preReplace/postReplace use wrapper's)
+    mount: config.mount
+      ? (el, ctx) => config.mount(el, { ...ctx, registerResource: (n, h) => resources.register(n, h) })
+      : undefined,
+    unmount: config.unmount
+      ? (el, ctx) => config.unmount(el, { ...ctx, registerResource: (n, h) => resources.register(n, h) })
+      : undefined
   }
 
   const desc = coreComponent(name, wrappedConfig, lifecycleMethods)
   desc._originalView = origView
-
-  // componentTag support for compose()
   desc._html = componentTag(config.classes || {})
-
   return desc
 }
 
