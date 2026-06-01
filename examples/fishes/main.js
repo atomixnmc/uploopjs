@@ -395,16 +395,20 @@ const FishesGame = component("FishesGame", {
     const basket = BasketLogic.create();
     const confetti = ConfettiLogic.create();
 
-    // ── Create canvas ──
+    // ── Create canvas (reuse if restored by resource mechanism) ──
     const container = el.querySelector("#fishes-container");
     if (!container) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = 800;
-    canvas.height = 400;
-    canvas.style.width = "100%";
-    canvas.style.height = "auto";
-    canvas.style.display = "block";
-    container.appendChild(canvas);
+    let canvas = container.querySelector("canvas");
+    const isRestored = !!canvas;
+    if (!canvas) {
+      canvas = document.createElement("canvas");
+      canvas.width = 800;
+      canvas.height = 400;
+      canvas.style.width = "100%";
+      canvas.style.height = "auto";
+      canvas.style.display = "block";
+      container.appendChild(canvas);
+    }
     const ctx2d = canvas.getContext("2d");
 
     // ── Register persistent resource ──

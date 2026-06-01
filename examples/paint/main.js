@@ -171,12 +171,15 @@ const Paint = component("Paint", {
       return { canvas, ctx2d };
     }
 
-    // ── Initial mount ──
+    // ── Initial mount (reuse canvas if restored by resource mechanism) ──
     const container = el.querySelector("#paint-container");
     if (!container) return;
-    const { canvas, ctx2d } = createCanvas(container);
-    ctx2d.fillStyle = "white";
-    ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+    let existing = container.querySelector("#paint-canvas");
+    if (!existing) {
+      const { canvas, ctx2d } = createCanvas(container);
+      ctx2d.fillStyle = "white";
+      ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     // ── Register persistent resource ──
     ctx.registerResource("paint-canvas", {
