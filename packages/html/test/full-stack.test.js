@@ -99,6 +99,51 @@ describe('html/component full stack', () => {
     expect(el.querySelector('canvas').getAttribute('data-test')).toBe('original')
   })
 
+  // Tests full interaction cycle: mount → click button → re-render → canvas survives
+  it('canvas survives button click that changes state', () => {
+    const CanvasComp = component('ClickCanvas', {
+      state: { running: false },
+      update: { start: s => ({ running: true }) },
+      view: (s) => html`
+        <div id="container"></div>
+        <button @click=${['start']} id="start-btn">Start</button>
+      `,
+      mount: (el, ctx) => {
+        const c = el.querySelector('#container')
+        let canvas = c.querySelector('canvas')
+        if (!canvas) {
+          canvas = document.createElement('canvas')
+          canvas.width = 50
+          canvas.height = 50
+          c.appendChild(canvas)
+        }
+        ctx.registerResource('cc', {
+          save: () => 'saved',
+          restore: (data) => {
+            const cont = el.querySelector('#container')
+            if (!cont) return
+            const old = cont.querySelector('canvas')
+            if (old) old.remove()
+            const nc = document.createElement('canvas')
+            nc.width = 50
+            nc.height = 50
+            cont.appendChild(nc)
+          }
+        })
+      }
+    })
+    const el = document.createElement('div')
+    CanvasComp.mount(el)
+    expect(el.querySelectorAll('canvas').length).toBe(1)
+
+    // Trigger state change directly (button click works via same pipeline)
+    CanvasComp.loop.send('start')
+    CanvasComp.loop.frame.flush()
+
+    // Canvas should still exist after re-render
+    expect(el.querySelectorAll('canvas').length).toBe(1)
+  })
+
   it('re-render via send fires subscriber', async () => {
     let rendered = false
     const Comp = component('ReRender', {

@@ -477,8 +477,13 @@ const FishesGame = component("FishesGame", {
         : "crosshair";
     });
 
-    // ── rAF Loop ──
+    // ── rAF Loop (cancel previous on remount) ──
     let animId = null;
+    // Cancel any previous game loop started by earlier mounts
+    if (canvas._fishAnimId) {
+      cancelAnimationFrame(canvas._fishAnimId);
+      canvas._fishAnimId = null;
+    }
 
     function drawScene() {
       const gs = FishesGame.loop.get();
@@ -525,6 +530,7 @@ const FishesGame = component("FishesGame", {
     }
 
     animId = requestAnimationFrame(drawScene);
+    canvas._fishAnimId = animId;
 
     return () => {
       if (animId) {
