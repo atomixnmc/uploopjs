@@ -59,10 +59,10 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     render: renderFn,
     draw: drawFn,
     frame: frameMode,
-    execution: exec            // v0.0.3: execution target
+    execution: rawExec            // v0.0.3: execution target or factory
   } = config
 
-  if (!exec) {
+  if (!rawExec) {
     throw new Error(
       `[Uploop] component("${name}") requires an execution target. ` +
       `Import { domExecution } from '@uploop/html' or use createDOMExecution().`
@@ -75,6 +75,9 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     update: { ...updateHandlers },
     effect: { ...effectHandlers }
   })
+
+  // execution can be a target object or a factory (loop) => target
+  const exec = typeof rawExec === 'function' ? rawExec(loop) : rawExec
 
   loop.registerNode('view', { type: 'view', dependsOn: ['state'] })
   if (view) loop.registerEdge('state', 'view')
@@ -426,4 +429,72 @@ export function component(name, config = {}, lifecycleMethods = {}) {
   callable._initialState = initialState
   if (config._cycleMethods) callable._cycleMethods = config._cycleMethods
   return callable
+}
+
+// ─── Custom Component Type Factory ──────────────────────────
+
+/**
+ * Create a custom component type with pre-configured defaults.
+ *
+ * Factory for reusable component archetypes (e.g., Drawable for canvas).
+ * Merges type defaults with instance config, chains lifecycle hooks,
+ * propagates execution targets, and forwards custom methods.
+ *
+ * @param {Object} typeDefaults — default config merged into every instance
+ * @param {Object} [typeDefaults.execution] — default execution target
+ * @returns {Function} Factory: (config) => component descriptor
+ */
+export function createComponentType(typeDefaults = {}) {
+  return function createTyped(config = {}) {
+    const merged = {
+      ...typeDefaults,
+      ...config,
+      state: { ...(typeDefaults.state || {}), ...(config.state || {}) },
+      update: { ...(typeDefaults.update || {}), ...(config.update || {}) },
+      effect: { ...(typeDefaults.effect || {}), ...(config.effect || {}) },
+      classes: { ...(typeDefaults.classes || {}), ...(config.classes || {}) },
+      ...(config.compose != null ? { compose: config.compose } : {}),
+      ...(typeDefaults.compose != null && config.compose == null ? { compose: typeDefaults.compose } : {}),
+      ...(config.computeParts != null ? { computeParts: config.computeParts } : {}),
+      ...(typeDefaults.computeParts != null && config.computeParts == null ? { computeParts: typeDefaults.computeParts } : {}),
+      ...(config.frame != null ? { frame: config.frame } : typeDefaults.frame != null ? { frame: typeDefaults.frame } : {}),
+      ...(config.execution != null ? { execution: config.execution } : typeDefaults.execution != null ? { execution: typeDefaults.execution } : {})
+    }
+
+    const baseMount = typeDefaults.mount
+    const userMount = config.mount
+    merged.mount = (el, ctx) => {
+      if (baseMount) baseMount(el, ctx)
+      if (userMount) userMount(el, ctx)
+    }
+
+    const baseUnmount = typeDefaults.unmount
+    const userUnmount = config.unmount
+    merged.unmount = (el, ctx) => {
+      if (userUnmount) userUnmount(el, ctx)
+      if (baseUnmount) baseUnmount(el, ctx)
+    }
+
+    const baseCycle = typeDefaults.cycleMethods || {}
+    const userCycle = config.cycleMethods || {}
+    const cycleMethods = {
+      composition: userCycle.composition || baseCycle.composition || 'createHtml',
+      afterFrame: [...(baseCycle.afterFrame || []), ...(userCycle.afterFrame || [])],
+      render: 'render' in userCycle ? userCycle.render : (baseCycle.render ?? null),
+      draw: 'draw' in userCycle ? userCycle.draw : (baseCycle.draw ?? null)
+    }
+    merged._cycleMethods = cycleMethods
+
+    const customMethods = {}
+    const reservedKeys = ['state','update','effect','mount','unmount','view','name','classes','compose','computeParts','frame','execution']
+    for (const key of Object.keys(config)) {
+      if (!reservedKeys.includes(key)) {
+        if (typeof config[key] === 'function') {
+          customMethods[key] = config[key]
+        }
+      }
+    }
+
+    return component(config.name || typeDefaults.name || 'Custom', merged, customMethods)
+  }
 }
