@@ -1,0 +1,6 @@
+export { html, isHtmlTemplate, applyBindings, componentTag, processUploopAttributes, consumeContext, resolveScope, registerScope } from './html.js'
+export { component, createComponentType } from './component.js'
+export { defineElement } from './element.js'
+export { bindEvents, unbindEvents } from './events.js'
+export { createDOM, patchDOM, applyPropBindings } from './dom.js'
+export { hydrate } from './hydrate.js'

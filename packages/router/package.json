@@ -1,0 +1,19 @@
+{
+  "name": "@uploop/router",
+  "version": "0.1.0",
+  "description": "Uploop router — functional route matching and navigation",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@uploop/core": "^0.1.0",
+    "@uploop/html": "^0.1.0"
+  }
+}

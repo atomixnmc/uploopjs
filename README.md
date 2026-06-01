@@ -1,120 +1,125 @@
 # Uploop
-![Uploop](public/vite.svg)
 
-Uploop is a "simple" functional js library.
-- Generate WebComponent from string literal
-- One way binding of data, via pure functions execution
-- Updater of data and frame
-- Store to connect data between updaters and Components
-- Ultility base css, generate by javascript
-- No build tool need, just import with esm from any Js CDN
-- Single tiny 6k gzip library with all of these features, even small if only core + html
+> **The update loop for the web.**
 
-**NOTE: Uploop is now still a WIP, expect some changes till it reach 1.0**
+Uploop is a universal update-loop architecture for UI, data, events, storage, and side effects. It's not just another component framework — it's a small, standard-like runtime model where UI, data, style, route, motion, and effects are designed as an executable **HyperGraph**.
 
-## Quick start
-Recommend way:
+## Architecture
 
 ```
-<script src="https://cdn.js/uploop.js" />
+@uploop/core     - Pure update protocol (no DOM, no browser)
+@uploop/html     - DOM/WebComponent adapter  
+@uploop/store    - External store, selectors, derived state
+@uploop/css      - Utility CSS engine
+@uploop/router   - Route updater
+@uploop/motion   - Frame/spring animation updater
 ```
-More common way: 
 
+**Core knows nothing about HTML.** No `HTMLElement`, no `customElements`, no `innerHTML`.
+
+## Quick Start
+
+```bash
+npm install
+npm run dev
 ```
-npm i uploop.js
-```
 
-## Motivation
-I've used React and other "view" library for many years.
-- Depend on JSX (or other madeup syntax :p ) and build tool
-- Imply a lot in our workflow and updating strategy (asap is bad!)
-- Wanted some thing extremely light weight and actually can be embeded everywhere needed
-- Take goodies from those old-day JQuery and the modern libraries like React, Redux, Preact, Solid, Zustand, Tailwind, XState, Ark, ... and Awesome ideas from GameEngines!
+## Demo: Counter
 
-### Why Uploop
-- Uploop mean update-loop which is the main idea of how updating should work in view layer
-- Data flow (copied) from one place to another like a stream
-- Some data need to be there quickly (aka ASAP), some can be refreshed in seconds (because who care)
-
-### Benefits
-- This level of simplicity, yet flexibility actually a big gain. 
-- Removing all the constraints you have with other framework. Everything is now possible again.
-- No fixed workflow really. So much freedom => You can really can think "out of the box" again with Uploop
-
-### Highlights
-- Uploop html is just **WebComponent** with what ever the standard is for HTML
-- Uploop store connect data like Redux or React hooks do, without complicated concepts and syntax
-- Uploop css is ultility based css like Tailwind but deeply integrated with your components and feel nature to be embeded
-- Uploop animation is like Framer motion, built-in solve most of your animation and transistion effect
-- Uploop state machine is like Ark or StateX, built-in help to create complex and predictable behaviour for component
-- Uploop routing is a pure functional approach to the routing issue with the help of updater and state machine, make a feel like magic
-- Uploop play well with 2d, 3d render library and high performance WebGL, Canvas. Think running a game inside your view!
-
-### Server side
-- Uploop server side rendering only a few LOC that render out the data into html. 
-- This simplicity and power which make Uplood perfect to be Serverless, see functional + serverless
-
-## Example
-- Counter
-- Todos
-
-
-A component:
 ```js
-import { $view, $state, $setState, $class } from "uploop.js";
+import { html, component } from '@uploop/html'
 
-export function Counter(initState) {
-  const { initCount, color } = initState || { initCount: 0 };
-  const count = $state(this, new Number(initCount || 0));  
-  const handleClick = () => {
-    $setState(this, count, count => new Number(count + 1));
-  }
-  return $view(this, () =>
-`
-  <div style="color: ${color}">count is ${count()}</div>
-  <button onclick="${$event(this, handleClick)}()">Add count</button>
-`, initState);
-}
+const Counter = component('Counter', {
+  state: { count: 0 },
 
-$class(Counter, 'u-counter');
+  update: {
+    inc: (s) => ({ count: s.count + 1 }),
+    dec: (s) => ({ count: s.count - 1 })
+  },
+
+  view: (state, { send }) => html`
+    <div>
+      <h2>Count: ${state.count}</h2>
+      <button @click=${() => send('inc')}>+</button>
+      <button @click=${() => send('dec')}>-</button>
+    </div>
+  `
+})
+
+// Mount to DOM
+Counter.mount(document.getElementById('root'))
 ```
 
-Component with html template:
+## Demo: Todos
+
 ```js
+import { html, component } from '@uploop/html'
 
+const Todo = component('Todo', {
+  state: { text: '', todos: [], filter: 'all' },
+
+  update: {
+    input: (s, text) => ({ ...s, text }),
+    add: (s) => s.text.trim()
+      ? { text: '', todos: [...s.todos, { id: Date.now(), text: s.text, done: false }] }
+      : s,
+    toggle: (s, id) => ({ 
+      todos: s.todos.map(t => t.id === id ? { ...t, done: !t.done } : t) 
+    })
+  },
+
+  view: (state, { send }) => html`
+    <div>
+      <input .value=${state.text} @input=${['input', e => e.target.value]}>
+      <button @click=${() => send('add')}>Add</button>
+      <ul>
+        ${state.todos.filter(t => !t.done).map(todo => html`
+          <li @click=${() => send('toggle', todo.id)}>
+            ${todo.text}
+          </li>
+        `)}
+      </ul>
+    </div>
+  `
+})
 ```
 
-Styles:
-```js
+## Core Concepts
 
+### Everything is an Updater
+An updater is not just a component. It can represent: UI component, request handler, animation frame, cache policy, database sync, signal, event stream, WebSocket channel.
+
+### One-Way by Default, Two-Way by Protocol
+```
+Input → Update → Frame → Output
 ```
 
-Store connect:
-```js
+### Store is a Bus, Not Global State
+Data types: `hot`, `cold`, `transient`, `stable`, `remote`, `derived`
 
+### Frame is First-Class
+```
+micro-frame     - Instant UI patch
+visual-frame    - requestAnimationFrame
+network-frame   - Request/response cycle
 ```
 
-State machine:
-```js
+### HyperGraph Model
+Every component exports its design graph. This gives you: devtools, AI generation, visual editor, debugging, optimization.
 
-```
+## Why Uploop?
 
-## Work well with
-- Vite
-- Typescript
-- VSCode extension es6-string-html
+- **6KB gzip** core
+- **No build step** — pure ESM, works from any CDN
+- **No JSX** — standard template literals
+- **CSP-safe** — no inline `onclick` handlers
+- **WebComponent** native
+- **HyperGraph** architecture — inspectable, optimizable, AI-friendly
 
-### TODO
-- [ ] Add more examples
-- [ ] Add more docs
-- [ ] Add more tests
-- [ ] Add more features
-- [ ] Add more plugins
-- [ ] Add more tools
+## Roadmap
 
-#### Version 0.1.0
-- [x] Core
-- [x] Html
-- [x] Store
-- [x] Css
-- [ ] No global variable
+See [docs/PLAN.md](./docs/PLAN.md) and [docs/TODO.md](./docs/TODO.md).
+
+## License
+
+MIT
