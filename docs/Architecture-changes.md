@@ -490,6 +490,99 @@ The Data State Heuristic lets the runner **choose different strategies per node 
 | `critical` | Durable immediately | Sync / immediate | None | Durably | Never | Payment, save, auth |
 | `disruptable` | Keep in memory | rAF | None | No | Always OK | Scroll position, video frame |
 
+### Resource Scope — Where Does This Data Live?
+
+`temperature` tells the runner *how urgent* the data is. `resourceScope` tells the runner *where it comes from* and *who controls it*. Combined, they unlock precise scheduling decisions that neither heuristic alone can make.
+
+| resourceScope | Meaning | Examples |
+|---|---|
+| `local` | Owned by this component, created here, no external dependency | Canvas 2D context, video element, generated UUID, Web Worker created by this component |
+| `remote` | Owned by an external service, fetched or subscribed to | REST API response, WebSocket stream, GraphQL query, CDN image, SSE event source |
+| `unknown` | Dynamic origin — could be local or remote depending on runtime | Plugin-provided resource, user-uploaded file, dynamically imported module, feature-flagged endpoint |
+
+### How resourceScope Changes Runner Decisions
+
+```
+Node: canvas2d
+  temperature: hot
+  resourceScope: local
+  → Runner decisions:
+    • DON'T fetch — it's already here
+    • DON'T cache — it's a live object, not serializable
+    • DON'T retry — if the context is lost, recreate, don't reconnect
+    • DO persist across DOM replacement — it's local state tied to a DOM element
+    • DO schedule on HOT LANE — 60fps drawing
+    • GC: release context on disconnect, no persistence needed
+
+Node: products
+  temperature: cold
+  resourceScope: remote
+  → Runner decisions:
+    • DO fetch — it lives on a server
+    • DO cache with TTL — network is expensive
+    • DO retry with backoff — network failures are transient
+    • DO deduplicate — same query, same response
+    • DO serialize for SSR — include in initial HTML payload
+    • Schedule on NETWORK LANE — don't block rAF
+    • GC: keep in persistent cache, evict from memory on idle
+
+Node: userAvatar
+  temperature: warm
+  resourceScope: remote
+  → Runner decisions:
+    • Fetch on first access, cache aggressively (images don't change often)
+    • Show placeholder while loading (suspend behavior)
+    • If fetch fails, show fallback (error behavior)
+    • Preload when near viewport (AI hint: likely to be viewed)
+    • Schedule on NETWORK LANE — load doesn't block interaction
+
+Node: pluginResource
+  temperature: warm
+  resourceScope: unknown
+  → Runner decisions:
+    • Most conservative strategy — assume remote until proven local
+    • Try cache first
+    • If cache miss, attempt fetch with timeout
+    • If fetch fails quickly (connection refused), treat as local — look for fallback
+    • Log for DevTools — unknown resources are debugging surface
+    • Schedule on WARM LANE — can't assume network latency, can't assume instant
+```
+
+### resourceScope × temperature Matrix
+
+|  | local | remote | unknown |
+|---|---|---|---|
+| **hot** | rAF, no cache, no fetch (canvas, mic) | WebSocket, stream, long-poll | Conservative, assume stream |
+| **warm** | microtask, session cache (form state, selection) | Fetch + cache + SWR (avatar, config) | Try cache → fetch → fallback |
+| **cold** | idle, persist (generated report, export) | Fetch + long TTL + prefetch (product catalog) | Cache-first, lazy fetch |
+| **critical** | Sync, durable (payment confirmation) | Sync + retry + ack (order submit) | Sync + durable + audit log |
+
+### Heuristic vs resourceScope vs behavior
+
+| Layer | What | Declared By | Controls |
+|---|---|---|---|
+| **Heuristic** | What kind of data? | `temperature` + `lifetime` | Memory, scheduling lane, GC strategy, persistence |
+| **resourceScope** | Where does it live? | `local` / `remote` / `unknown` | Fetch strategy, retry policy, dedup, serialization |
+| **Behavior** | How should it act? | Config + edge rules | Debounce, cache TTL, suspend fallback, error boundary |
+
+A node can declare all three:
+
+```js
+results: {
+  // Heuristic — what kind of data
+  temperature: 'cold',
+  lifetime: 'session',
+
+  // resourceScope — where it lives
+  resourceScope: 'remote',
+
+  // Behavior — how it acts
+  cache: { ttl: '5m', swr: true },
+  suspend: { fallback: 'LoadingSpinner' },
+  error: { fallback: 'ErrorView', retry: 3 }
+}
+```
+
 ### What Each Heuristic Controls
 
 The runner makes different decisions based on the heuristic:
@@ -727,52 +820,48 @@ project: (s) => ({
 })
 ```
 
-### compose → assemble
+### compose → keep
 
 **Before:** `compose({ wheels, doors, html: h })`
-**After:** `assemble({ wheels, doors, html: h })`
+**After:** unchanged
 
-`compose` is overloaded (function composition, React composition, Docker compose). `assemble` is more literal — you're assembling child components from projected parts. It also pairs nicely with `project`: project state into parts, assemble parts into children.
+`compose` is well-established in UI frameworks (React composition, Vue composition API, Docker compose). It's more familiar than `assemble` and conveys the same intent: compose child components from projected parts.
 
 ```js
-// Before
+// Stays as-is
 compose: ({ wheels, doors, html: h }) => [
   ...wheels.map(w => h`<Wheel .../>`),
   ...doors.map(d => h`<Door .../>`)
 ]
-
-// After
-assemble: ({ wheels, doors, html: h }) => [
-  ...wheels.map(w => h`<Wheel .../>`),
-  ...doors.map(d => h`<Door .../>`)
-]
 ```
 
-**Pipeline: project → assemble**
+**Pipeline: project → compose**
 
 ```
-state  ──project()──→  { wheels, doors }  ──assemble()──→  [ <Wheel/>, <Door/> ]
+state  ──project()──→  { wheels, doors }  ──compose()──→  [ <Wheel/>, <Door/> ]
                         (pure projection)                   (creates children)
 ```
 
-### componentTag → jsx (or h)
+### componentTag → keep, alias as `h` in html
 
-**Before:** `componentTag(classes)`
-**After:** `jsx(classes)` or `h(classes)`
+**Before:** `componentTag(classes)` — used only in `compose`/`assemble` internally
+**After:** `componentTag(classes)` stays in core; `@uploop/html` re-exports as `h`
 
-`componentTag` doesn't convey what it does. It's a mini-JSX parser — it takes `<Component prop={val}/>` strings and returns rendered output. `jsx` is the recognized term for this pattern (Solid's `jsx`, Preact's `jsx`). `h` is the hyperscript convention (React's `createElement` alias).
-
-For Uploop's no-JSX identity, `jsx` might send the wrong signal despite being technically accurate. **Recommend `h`** — it's the established convention for "create element from descriptor" and doesn't imply a JSX dependency.
+`componentTag` is the graph-level primitive: it takes component classes and returns a function that creates instances from `<TagName prop={val}/>` descriptors. This belongs in core — it's about component instantiation, not HTML. But inside `assemble()` callbacks where developers write template-like code, `h` is the natural hyperscript alias:
 
 ```js
-// Before
+// In core — componentTag is the graph primitive
+import { componentTag } from '@uploop/core'
 const tag = componentTag({ Wheel, Door })
-tag`<Wheel x=${10}/>`
+tag`<Wheel x=${10} y=${20}/>`  // → Wheel instance
 
-// After
-const h = createElements({ Wheel, Door })
-h`<Wheel x=${10}/>`
+// In html assemble() — h is the idiomatic template alias
+assemble: ({ wheels, html: h }) => [  // h === componentTag({ Wheel, Door })
+  ...wheels.map(w => h`<Wheel x=${w.x} y=${w.y}/>`)
+]
 ```
+
+`h` is not a rename — it's a shorter alias for the specific context where developers write HTML-like composition. Core keeps the descriptive name; html sugar-coats it.
 
 ### applyBindings → wire
 
@@ -795,19 +884,63 @@ Verbose + redundant (everything in Uploop is an "Uploop attribute"). `scan` says
 
 More specific. It's hydrating component instances from placeholder DOM elements inside virtual containers. `process` is too vague.
 
+### registerResource → keep, add mode parameter
+
+**Before:** `registerResource(name, { save, restore })`
+**After:** `registerResource(name, mode, { ... })`
+
+`registerResource` stays — it's correctly descriptive. But resources have different lifecycle heuristics, so a mode parameter selects the strategy:
+
+```js
+// Persistent — keep alive across innerHTML replacement (canvas, video, iframe)
+registerResource('gameCanvas', 'persistent', {
+  save: () => ({ idx, containerId, tag }),
+  restore: (data, root) => { /* re-insert element into DOM */ }
+})
+
+// Cache — stale-while-revalidate with TTL (fetch results, images)
+registerResource('products', 'cache', {
+  ttl: '5m',
+  fetch: () => api.getProducts(),
+  onStale: (data) => api.getProducts()
+})
+
+// Stream — live connection (WebSocket, SSE, polling)
+registerResource('notifications', 'stream', {
+  connect: () => new WebSocket(url),
+  onMessage: (msg) => { /* dispatch to graph */ },
+  reconnect: { backoff: 'exponential', maxRetries: 5 }
+})
+
+// Lock — exclusive access (audio context, camera, file handle)
+registerResource('mic', 'lock', {
+  acquire: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+  release: (stream) => stream.getTracks().forEach(t => t.stop())
+})
+```
+
+| Mode | Heuristic | Behavior |
+|---|---|
+| `persistent` | Survives DOM replacement | save/restore hooks |
+| `cache` | Cold, remote, TTL | stale-while-revalidate |
+| `stream` | Hot, connected | auto-reconnect, backpressure |
+| `lock` | Critical, exclusive | acquire/release, conflict detection |
+
+The mode tells the runner which heuristic pipeline to use. `persistent` goes through the replace-hook pipeline. `cache` goes through the cold/remote scheduling lane. `stream` stays in the hot lane. `lock` goes through the critical lane.
+
 ### Summary of Renames
 
 | v0.0.1 | v0.0.2 | Why |
 |---|---|---|
 | `link_methods_names` | `renameLifeCycleMethods` | JS camelCase, self-documenting |
 | `computeParts` | `project` | Standard FP term, short, precise |
-| `compose` | `assemble` | Avoids overloading, pairs with `project` |
-| `componentTag` | `h` (or `jsx`) | Convention for element factories |
+| `compose` | keep | Established term: React/Docker/Vue composition |
+| `componentTag` | keep; alias as `h` in html | Core primitive stays descriptive; html re-exports as `h` |
 | `applyBindings` | `wire` | Short, graph metaphor |
 | `processUploopAttributes` | `scan` | Short, says what it does |
 | `processVirtualContainers` | `hydrateContainers` | Specific about hydration intent |
 | `createEffectSystem` | `effects` | Shorter, follows `signals`/`stores` pattern |
-| `registerResource` | `keepAlive` | Intent: keep this DOM element alive across renders |
+| `registerResource` | keep, add mode param | Mode selects heuristic: persistent, cache, stream, lock |
 | `saveResources` / `restoreResources` | Runner internal (pre-replace / post-replace hooks) | Not user-facing after execution protocol |
 
 ### Names Worth Keeping
@@ -831,8 +964,8 @@ These v0.0.1 names are already good:
 
 ### The Rule of Thumb
 
-- **Verbs**: short, one word, says what it does (`scan`, `wire`, `send`, `project`, `assemble`)
-- **Nouns**: standard convention, no invention (`signal`, `frame`, `graph`, `component`, `jsx`)
+- **Verbs**: short, one word, says what it does (`scan`, `wire`, `send`, `project`)
+- **Nouns**: standard convention, no invention (`signal`, `frame`, `graph`, `component`)
 - **Factories**: `create*` or bare noun (`createSignal`, `createFrame`, `component`)
 - **No Uploop prefix in function names** — the import path is the namespace
 

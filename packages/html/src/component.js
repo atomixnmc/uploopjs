@@ -1,4 +1,4 @@
-import { createLoop } from '@uploop/core'
+import { createLoop, createDOMExecution } from '@uploop/core'
 import { html, isHtmlTemplate, applyBindings, componentTag, processUploopAttributes, processVirtualContainers, consumeContext, resolveScope } from './html.js'
 
 /**
@@ -114,6 +114,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     if (!element) return () => {}
 
     const ctx = { send: loop.send, get: loop.get, registerResource, find: (sel) => element.querySelector(sel), consume: (name) => consumeContext(element, name), scope: (name, tag) => resolveScope(name, tag) }
+    const execution = createDOMExecution()
 
     function apply() {
       const result = renderView()
@@ -122,7 +123,8 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       // Save persistent resources before DOM replacement
       saveResources()
 
-      const focusState = saveFocus(element)
+      // Execution protocol: save DOM state before destruction
+      const snapshot = execution.hooks.preReplace(element)
 
       let htmlStr, bindings = []
       if (isHtmlTemplate(result)) {
@@ -132,7 +134,10 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         htmlStr = String(result)
       }
 
-      element.innerHTML = htmlStr
+      // Execution protocol: replace content
+      execution.replace(element, htmlStr)
+
+      // Wire event/prop bindings (html-specific, will move to dom-execution later)
       applyBindings(element, bindings, loop.send, loop.get())
 
       // Process scope/context/resource markers (pre-restore)
@@ -141,13 +146,11 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       // Restore persistent resources — re-inserts canvas etc.
       restoreResources(element)
 
-      // Second pass: process virtual containers on restored elements.
-      // The canvas element may now be the restored one (with existing
-      // instances). New placeholder DOM children carry updated props.
+      // Second pass: process virtual containers on restored elements
       processVirtualContainers(element, ctx)
 
-      restoreFocus(element, focusState)
-      if (focusState) requestAnimationFrame(() => restoreFocus(element, focusState))
+      // Execution protocol: restore DOM state
+      execution.hooks.postReplace(element, snapshot)
     }
 
     if (props) loop.set((prev) => ({ ...prev, ...props }))
@@ -162,7 +165,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       unsubscribe()
       if (unmountHook) unmountHook(element, ctx)
       element.removeAttribute('data-up-component')
-      element.innerHTML = ''
+      execution.unmount(element)
       _resources.clear()
     }
   }
@@ -330,20 +333,21 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         }
       }
 
+      const execution = createDOMExecution()
+
       function applyMount() {
         const result = doRender()
         if (!result || !el) return
         const saved = saveInstResources()
-        const focusState = saveFocus(el)
+        const snapshot = execution.hooks.preReplace(el)
         if (isHtmlTemplate(result)) {
-          el.innerHTML = result.toString()
-          bindEvents(el, result.bindings || [], instanceLoop.send, instanceLoop.get())
+          execution.replace(el, result.toString())
+          applyBindings(el, result.bindings || [], instanceLoop.send, instanceLoop.get())
         } else {
-          el.innerHTML = String(result)
+          execution.replace(el, String(result))
         }
         restoreInstResources(saved)
-        restoreFocus(el, focusState)
-        if (focusState) requestAnimationFrame(() => restoreFocus(el, focusState))
+        execution.hooks.postReplace(el, snapshot)
       }
 
       // Don't fire frame loop on mount — the parent canvas component
@@ -362,7 +366,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       return () => {
         unsub()
         stopFrameLoop()
-        el.innerHTML = ''
+        execution.unmount(el)
         _instResources.clear()
       }
     }
@@ -427,56 +431,6 @@ export function component(name, config = {}, lifecycleMethods = {}) {
   callable._initialState = initialState
   if (config._cycleMethods) callable._cycleMethods = config._cycleMethods
   return callable
-}
-
-// ─── Focus Preservation ─────────────────────────────────────
-
-function saveFocus(root) {
-  const active = document.activeElement
-  if (!active || !root.contains(active)) return null
-  const tag = active.tagName
-  const type = active.type || ''
-  const placeholder = active.getAttribute('placeholder') || ''
-  const name = active.getAttribute('name') || ''
-  let selectionStart = -1, selectionEnd = -1
-  if ((tag === 'INPUT' || tag === 'TEXTAREA') && typeof active.selectionStart === 'number') {
-    selectionStart = active.selectionStart
-    selectionEnd = active.selectionEnd
-  }
-  const tagL = tag.toLowerCase()
-  const parts = [tagL]
-  if (type && type !== 'text') parts.push(`[type="${type}"]`)
-  if (placeholder) parts.push(`[placeholder="${placeholder.replace(/"/g, '\\"')}"]`)
-  if (name) parts.push(`[name="${name}"]`)
-  const selector = parts.join('')
-  let index = -1
-  if (!placeholder && !name) {
-    const parent = active.parentElement
-    if (parent) {
-      const siblings = parent.querySelectorAll(tagL)
-      index = Array.from(siblings).indexOf(active)
-    }
-  }
-  return { selector, tag: tagL, selectionStart, selectionEnd, index }
-}
-
-function restoreFocus(root, state) {
-  if (!state) return
-  let target = null
-  if (state.selector) target = root.querySelector(state.selector)
-  if (!target && state.index >= 0) {
-    const siblings = root.querySelectorAll(state.tag)
-    target = siblings[state.index] || null
-  }
-  if (!target) return
-  target.focus()
-  if (state.selectionStart >= 0 && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-    target.setSelectionRange(state.selectionStart, state.selectionEnd)
-  }
-}
-
-function bindEvents(el, bindings, send, state) {
-  try { applyBindings(el, bindings, send, state) } catch (e) {}
 }
 
 // ─── Custom Component Type Factory ──────────────────────────
