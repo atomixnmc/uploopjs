@@ -308,21 +308,6 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         : ''
     }
 
-    function saveInstResources() {
-      const snap = new Map()
-      for (const [n, h] of _instResources) {
-        if (h.save) try { snap.set(n, h.save()) } catch (e) {}
-      }
-      return snap
-    }
-
-    function restoreInstResources(snap) {
-      if (!snap) return
-      for (const [n, h] of _instResources) {
-        if (h.restore && snap.has(n)) try { h.restore(snap.get(n)) } catch (e) {}
-      }
-    }
-
     function mount(el) {
       if (frameMode === 'visual' && !_ctx2d) {
         let canvas = el?.closest?.('canvas') || el?.parentElement?.closest?.('canvas')
@@ -338,7 +323,6 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       function applyMount() {
         const result = doRender()
         if (!result || !el) return
-        const saved = saveInstResources()
 
         const snapshot = exec.hooks?.preReplace?.(el) ?? {}
 
@@ -353,11 +337,8 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         exec.replace?.(el, htmlStr) ?? (el.innerHTML = htmlStr)
 
         if (exec.hooks?.postReplace) {
-          exec.hooks.postReplace(el, { ...snapshot, _resources: saved })
+          exec.hooks.postReplace(el, snapshot)
         }
-
-        // Fallback: if exec doesn't do resource restore, do it here
-        restoreInstResources(saved)
       }
 
       if (frameMode && !_animId) {
