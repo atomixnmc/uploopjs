@@ -27,11 +27,20 @@ const tabs = [
   { id: "cars", label: "Cars 🚗", comp: CarsApp },
 ];
 
+// Read initial tab from URL hash, default to counter
+function getTabFromHash() {
+  const h = window.location.hash.replace(/^#/, "");
+  return tabs.find((t) => t.id === h) ? h : "counter";
+}
+
 const DemoApp = component("DemoApp", {
-  state: { tab: "counter", debugTab: "graph", autoRefresh: true },
+  state: { tab: getTabFromHash(), debugTab: "graph", autoRefresh: true },
 
   update: {
-    switch: (s, tab) => ({ ...s, tab }),
+    switch: (s, tab) => {
+      window.location.hash = tab;
+      return { ...s, tab };
+    },
     debugSwitch: (s, debugTab) => ({ ...s, debugTab }),
     toggleAutoRefresh: (s) => ({ ...s, autoRefresh: !s.autoRefresh }),
   },
@@ -344,6 +353,14 @@ function formatState(obj, indent = 0) {
 const root = document.getElementById("app");
 if (root) {
   DemoApp.mount(root);
+
+  // Sync browser back/forward with tab state
+  window.addEventListener("hashchange", () => {
+    const h = window.location.hash.replace(/^#/, "");
+    if (tabs.find((t) => t.id === h) && DemoApp.loop.get().tab !== h) {
+      DemoApp.loop.send("switch", h);
+    }
+  });
 
   requestAnimationFrame(() => {
     const mountMap = {};

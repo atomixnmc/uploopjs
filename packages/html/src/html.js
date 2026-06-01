@@ -52,7 +52,7 @@ export function html(strings, ...values) {
           index: bindingIndex
         })
         parts[parts.length - 1] = prevStr.slice(0, -propMatch[0].length) +
-          `data-up-prop="${propName}"`
+          `data-up-prop="${propName}:${bindingIndex}"`
         parts.push('')
         return
       }
@@ -69,7 +69,7 @@ export function html(strings, ...values) {
           index: bindingIndex
         })
         parts[parts.length - 1] = prevStr.slice(0, -boolMatch[0].length) +
-          `data-up-bool="${attrName}"`
+          `data-up-bool="${attrName}:${bindingIndex}"`
         parts.push('')
         return
       }
@@ -92,8 +92,14 @@ export function html(strings, ...values) {
           }
           if (innerBindings[bi].type === 'prop') {
             htmlStr = htmlStr.replace(
-              'data-up-prop="' + innerBindings[bi].name + '"',
-              'data-up-prop="' + innerBindings[bi].name + '"'
+              new RegExp('data-up-prop="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+              'data-up-prop="' + innerBindings[bi].name + ':' + newIdx + '"'
+            )
+          }
+          if (innerBindings[bi].type === 'bool') {
+            htmlStr = htmlStr.replace(
+              new RegExp('data-up-bool="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+              'data-up-bool="' + innerBindings[bi].name + ':' + newIdx + '"'
             )
           }
         }
@@ -113,6 +119,18 @@ export function html(strings, ...values) {
                 htmlStr = htmlStr.replace(
                   new RegExp('data-up-event="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
                   'data-up-event="' + innerBindings[bi].name + ':' + newIdx + '"'
+                )
+              }
+              if (innerBindings[bi].type === 'prop') {
+                htmlStr = htmlStr.replace(
+                  new RegExp('data-up-prop="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+                  'data-up-prop="' + innerBindings[bi].name + ':' + newIdx + '"'
+                )
+              }
+              if (innerBindings[bi].type === 'bool') {
+                htmlStr = htmlStr.replace(
+                  new RegExp('data-up-bool="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+                  'data-up-bool="' + innerBindings[bi].name + ':' + newIdx + '"'
                 )
               }
             }
@@ -170,8 +188,8 @@ export function applyBindings(root, bindings, send, state) {
     }
 
     if (binding.type === 'prop') {
-      const { name: propName, value } = binding
-      const targets = root.querySelectorAll(`[data-up-prop="${propName}"]`)
+      const { name: propName, value, index } = binding
+      const targets = root.querySelectorAll(`[data-up-prop="${propName}:${index}"]`)
       for (const target of targets) {
         target.removeAttribute('data-up-prop')
         const val = typeof value === 'function' ? value(state) : value
@@ -180,8 +198,8 @@ export function applyBindings(root, bindings, send, state) {
     }
 
     if (binding.type === 'bool') {
-      const { name: attrName, value } = binding
-      const targets = root.querySelectorAll(`[data-up-bool="${attrName}"]`)
+      const { name: attrName, value, index } = binding
+      const targets = root.querySelectorAll(`[data-up-bool="${attrName}:${index}"]`)
       for (const target of targets) {
         target.removeAttribute('data-up-bool')
         const val = typeof value === 'function' ? value(state) : value
