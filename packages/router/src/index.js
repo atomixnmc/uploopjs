@@ -40,13 +40,14 @@ export function createRouter(routes = {}, options = {}) {
     update: {
       /** Navigate to a path */
       navigate: (s, path) => {
+        const cleanPath = path.replace(/^\/+/, '')
         if (typeof window !== 'undefined') {
-          const fullPath = useHash ? `#${path}` : `${base}${path}`
+          const fullPath = useHash ? `#${cleanPath}` : `/${base}${cleanPath}`
           window.history.pushState({}, '', fullPath)
         }
         return {
-          path,
-          params: extractParams(path, routeMap),
+          path: cleanPath,
+          params: extractParams(cleanPath, routeMap),
           query: (typeof window !== 'undefined') ? parseQueryString() : {},
           hash: (typeof window !== 'undefined') ? (window.location.hash || '') : ''
         }

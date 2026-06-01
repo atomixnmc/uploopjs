@@ -28,11 +28,12 @@ const tabs = [
 ];
 
 const DemoApp = component("DemoApp", {
-  state: { tab: "counter", debugTab: "graph" },
+  state: { tab: "counter", debugTab: "graph", autoRefresh: true },
 
   update: {
     switch: (s, tab) => ({ ...s, tab }),
     debugSwitch: (s, debugTab) => ({ ...s, debugTab }),
+    toggleAutoRefresh: (s) => ({ ...s, autoRefresh: !s.autoRefresh }),
   },
 
   view: (state, { send }) => {
@@ -77,9 +78,37 @@ const DemoApp = component("DemoApp", {
         <details style="margin-top:1.25rem;" ${state.debugTab ? "open" : ""}>
           <summary
             style="cursor:pointer;font-size:0.88rem;color:#555;font-weight:600;user-select:none;
-                         padding:0.4rem 0.6rem;border-radius:6px;background:#f0f0f4;"
+                         padding:0.4rem 0.6rem;border-radius:6px;background:#f0f0f4;display:flex;align-items:center;gap:0.5rem;"
           >
-            ⚡ HyperGraph Inspector
+            <span>⚡ HyperGraph Inspector</span>
+            <label
+              style="font-size:0.7rem;font-weight:400;color:#888;display:inline-flex;align-items:center;gap:0.2rem;cursor:pointer;"
+              @click=${(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                ?checked=${state.autoRefresh}
+                @click=${(e) => {
+                  e.stopPropagation();
+                  send("toggleAutoRefresh");
+                }}
+                style="cursor:pointer;margin:0;"
+              />
+              auto-refresh
+            </label>
+            ${!state.autoRefresh
+              ? html`
+                  <button
+                    @click=${(e) => {
+                      e.stopPropagation();
+                      send("debugSwitch", state.debugTab);
+                    }}
+                    style="font-size:0.7rem;padding:0.15rem 0.45rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:white;"
+                  >
+                    🔄 Refresh
+                  </button>
+                `
+              : ""}
           </summary>
 
           <!-- Debug tabs -->
@@ -91,6 +120,7 @@ const DemoApp = component("DemoApp", {
               { id: "state", label: "State" },
               { id: "events", label: "Events" },
               { id: "signals", label: "Signals" },
+              { id: "components", label: "Components" },
               { id: "meta", label: "Metadata" },
             ].map(
               (dt) => html`
@@ -130,9 +160,11 @@ ${state.debugTab === "graph"
                       ? renderEventsView(graph)
                       : state.debugTab === "signals"
                         ? renderSignalsView(graph)
-                        : state.debugTab === "meta"
-                          ? renderMetaView(graph)
-                          : ""}
+                        : state.debugTab === "components"
+                          ? renderComponentsView(tabs)
+                          : state.debugTab === "meta"
+                            ? renderMetaView(graph)
+                            : ""}
           </pre
           >
         </details>
@@ -221,6 +253,25 @@ function renderEventsView(graph) {
   const parts = ["  Available events (send via click/input or loop.send):"];
   for (const [name] of updates) {
     parts.push(`  • ${name}`);
+  }
+  return parts.join("\n");
+}
+
+function renderComponentsView(tabList) {
+  if (!tabList || tabList.length === 0) return "  (no components registered)";
+  const parts = [];
+  for (const t of tabList) {
+    const comp = t.comp;
+    const graph = comp?.describe?.();
+    const nodeCount = graph ? Object.keys(graph.nodes || {}).length : 0;
+    const edgeCount = graph ? (graph.edges || []).length : 0;
+    const state = comp?.loop?.get?.();
+    const stateKeys = state ? Object.keys(state).length : 0;
+    const mounted = comp?.loop ? "✓" : "✗";
+    const active = comp?.describe ? graph?.name || t.id : t.id;
+    parts.push(
+      `  ${mounted} ${t.label.padEnd(14)} nodes:${String(nodeCount).padStart(2)}  edges:${String(edgeCount).padStart(2)}  state:${String(stateKeys).padStart(2)}  name:${active}`,
+    );
   }
   return parts.join("\n");
 }

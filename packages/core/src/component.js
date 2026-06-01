@@ -177,12 +177,12 @@ export function component(name, config = {}, lifecycleMethods = {}) {
 
     const unsubscribe = loop.subscribe(() => { apply() })
 
-    if (mountHook) mountHook(element, { send: loop.send, get: loop.get })
+    if (mountHook) mountHook(element, { send: loop.send, get: loop.get, registerResource })
     element.setAttribute?.('data-up-component', name)
 
     return () => {
       unsubscribe()
-      if (unmountHook) unmountHook(element, { send: loop.send, get: loop.get })
+      if (unmountHook) unmountHook(element, { send: loop.send, get: loop.get, registerResource })
       element.removeAttribute?.('data-up-component')
       exec.unmount(element)
       _resources.clear()
