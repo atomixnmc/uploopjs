@@ -1,143 +1,76 @@
 import { html, component } from "@uploop/html";
+import { injectAnimations, ANIMATIONS } from "@uploop/css";
 
-// ════════════════════════════════════════════════════════════
-// Uploop Data Grid — v0.0.3
-//
-// Showcases core architectural strengths:
-//
-// 1. Data Classification
-//    rows = cold (generated, potentially large)
-//    sortKey/sortDir/search/cols/start = warm (interactive UI)
-//
-// 2. Reactive Children via computeParts → compose
-//    computeParts: state → { visibleItems, headers }
-//    compose:      { visibleItems } → [ <Row/> ... ]
-//
-// 3. Virtual Instance Reuse
-//    Instead of creating 1000 Row instances, we create a pool
-//    of ~20 and recycle them. When the user scrolls, only the
-//    reused instances get updated props — no DOM destruction.
-//
-//    "Real instance" mode:  create() called for every row
-//    "Virtual reuse" mode:  pool of instances, props swapped
-//
-// 4. Batch Updates
-//    Scrolling sends 'scroll' event → debounced state update
-//    → only visible rows recompute → instances auto-sync
-// ════════════════════════════════════════════════════════════
+// ─── Test data ──────────────────────────────────────────
+const NAMES = [
+  "Alice",
+  "Bob",
+  "Carol",
+  "Dave",
+  "Eve",
+  "Frank",
+  "Grace",
+  "Hank",
+  "Iris",
+  "Jack",
+  "Kate",
+  "Liam",
+  "Mia",
+  "Noah",
+  "Olivia",
+  "Paul",
+  "Quinn",
+  "Rose",
+  "Sam",
+  "Tina",
+];
+const CITIES = [
+  "NYC",
+  "LA",
+  "Chicago",
+  "Houston",
+  "Phoenix",
+  "Philly",
+  "SA",
+  "SD",
+  "Dallas",
+  "Austin",
+];
+const DEPTS = [
+  "Eng",
+  "Design",
+  "Marketing",
+  "Sales",
+  "Support",
+  "Finance",
+  "Ops",
+  "Legal",
+  "HR",
+  "R&D",
+];
+const STATUSES = ["Active", "Inactive", "Pending", "On Leave"];
 
-// ─── Cell Component (reusable instance) ──────────────────
-const Cell = component("Cell", {
-  state: { value: "", align: "left", width: 80 },
-  view: (s) => html`
-    <div
-      style="padding:0.35rem 0.6rem;font-size:0.82rem;text-align:${s.align};
-              width:${s.width}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-    >
-      ${s.value}
-    </div>
-  `,
-});
-
-// ─── Row Component (reusable instance) ──────────────────
-const Row = component("Row", {
-  state: { cells: [], index: 0, selected: false },
-  update: {
-    setCells: (s, cells) => ({ ...s, cells }),
-    setIndex: (s, index) => ({ ...s, index }),
-    toggleSelect: (s) => ({ ...s, selected: !s.selected }),
-  },
-  view: (s) => html`
-    <div
-      style="display:flex;border-bottom:1px solid #eee;
-             background:${s.selected
-        ? "#eef"
-        : s.index % 2
-          ? "#fafafa"
-          : "white"};"
-    >
-      ${s.cells.map(
-        (c) => html`
-          <div
-            style="padding:0.35rem 0.6rem;font-size:0.82rem;text-align:${c.align ||
-            "left"};width:${c.width ||
-            80}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-          >
-            ${c.value}
-          </div>
-        `,
-      )}
-    </div>
-  `,
-});
-
-// ─── Generate test data ─────────────────────────────────
 function generateData(rows, cols) {
-  const names = [
-    "Alice",
-    "Bob",
-    "Carol",
-    "Dave",
-    "Eve",
-    "Frank",
-    "Grace",
-    "Hank",
-    "Iris",
-    "Jack",
-    "Kate",
-    "Liam",
-    "Mia",
-    "Noah",
-    "Olivia",
-    "Paul",
-    "Quinn",
-    "Rose",
-    "Sam",
-    "Tina",
-  ];
-  const cities = [
-    "NYC",
-    "LA",
-    "Chicago",
-    "Houston",
-    "Phoenix",
-    "Philly",
-    "SA",
-    "SD",
-    "Dallas",
-    "Austin",
-  ];
-  const depts = [
-    "Eng",
-    "Design",
-    "Marketing",
-    "Sales",
-    "Support",
-    "Finance",
-    "Ops",
-    "Legal",
-    "HR",
-    "R&D",
-  ];
-
   return Array.from({ length: rows }, (_, i) => {
-    const cols_ = {};
+    const r = { id: i };
     for (let c = 0; c < cols; c++) {
-      if (c === 0) cols_[`col${c}`] = names[i % names.length];
-      else if (c === 1) cols_[`col${c}`] = cities[i % cities.length];
-      else if (c === 2) cols_[`col${c}`] = depts[i % depts.length];
-      else cols_[`col${c}`] = Math.floor(Math.random() * 100000);
+      if (c === 0)
+        r[`col${c}`] =
+          `${NAMES[i % NAMES.length]} ${Math.floor(i / NAMES.length) + 1}`;
+      else if (c === 1)
+        r[`col${c}`] =
+          `${CITIES[i % CITIES.length]} #${Math.floor(i / CITIES.length) + 1}`;
+      else if (c === 2) r[`col${c}`] = DEPTS[i % DEPTS.length];
+      else if (c === 3) r[`col${c}`] = STATUSES[i % STATUSES.length];
+      else r[`col${c}`] = Math.floor(Math.random() * 100000);
     }
-    return { id: i, ...cols_ };
+    return r;
   });
 }
 
-// ════════════════════════════════════════════════════════════
-// DataGrid — virtual scrolling, sortable, configurable
-// ════════════════════════════════════════════════════════════
 const DataGrid = component("DataGrid", {
   state: {
-    rows: generateData(500, 5),
+    rows: generateData(100, 5),
     cols: 5,
     sortKey: null,
     sortDir: "asc",
@@ -145,18 +78,16 @@ const DataGrid = component("DataGrid", {
     start: 0,
     pageSize: 20,
     selectedRow: null,
-    mode: "virtual", // "virtual" | "real"
   },
 
   update: {
     setCols: (s, n) => ({
       ...s,
       cols: n,
-      rows: generateData(500, n),
+      rows: generateData(100, n),
       sortKey: null,
       start: 0,
     }),
-    setMode: (s, m) => ({ ...s, mode: m }),
     sort: (s, key) => {
       const dir = s.sortKey === key && s.sortDir === "asc" ? "desc" : "asc";
       const sorted = [...s.rows].sort((a, b) => {
@@ -173,55 +104,16 @@ const DataGrid = component("DataGrid", {
       return { ...s, rows: sorted, sortKey: key, sortDir: dir, start: 0 };
     },
     search: (s, q) => ({ ...s, search: q, start: 0 }),
-    scroll: (s, start) => ({
-      ...s,
-      start: Math.max(0, Math.min(start, s.rows.length - s.pageSize)),
-    }),
-    select: (s, idx) => ({
-      ...s,
-      selectedRow: s.selectedRow === idx ? null : idx,
-    }),
     pageUp: (s) => ({ ...s, start: Math.max(0, s.start - s.pageSize) }),
     pageDown: (s) => ({
       ...s,
       start: Math.min(s.start + s.pageSize, s.rows.length - s.pageSize),
     }),
+    select: (s, idx) => ({
+      ...s,
+      selectedRow: s.selectedRow === idx ? null : idx,
+    }),
   },
-
-  computeParts: (s) => {
-    const filtered = s.search
-      ? s.rows.filter((r) =>
-          Object.values(r).some((v) =>
-            String(v).toLowerCase().includes(s.search.toLowerCase()),
-          ),
-        )
-      : s.rows;
-
-    const end = Math.min(s.start + s.pageSize, filtered.length);
-    const visibleItems = filtered.slice(s.start, end).map((row, i) => ({
-      index: s.start + i,
-      cells: Object.entries(row)
-        .filter(([k]) => k !== "id")
-        .map(([k, v]) => ({
-          key: k,
-          value: String(v),
-          align: typeof v === "number" ? "right" : "left",
-          width: Math.max(80, Math.min(150, 1200 / s.cols)),
-        })),
-      selected: s.selectedRow === s.start + i,
-    }));
-
-    return {
-      visibleItems,
-      totalFiltered: filtered.length,
-      headers: Object.keys(s.rows[0] || {}).filter((k) => k !== "id"),
-    };
-  },
-
-  compose: ({ visibleItems }) =>
-    visibleItems.map((item) =>
-      Row({ index: item.index, cells: item.cells, selected: item.selected }),
-    ),
 
   view: (state, { send }) => {
     const colNames = Object.keys(state.rows[0] || {}).filter((k) => k !== "id");
@@ -232,200 +124,164 @@ const DataGrid = component("DataGrid", {
           ),
         )
       : state.rows;
+    const end = Math.min(state.start + state.pageSize, filtered.length);
+    const visible = filtered.slice(state.start, end);
     const totalPages = Math.ceil(filtered.length / state.pageSize);
     const currentPage = Math.floor(state.start / state.pageSize) + 1;
+    const colW = Math.max(80, Math.min(150, 1200 / state.cols));
 
-    return html`
-      <div style="font-family:sans-serif;padding:0.5rem;font-size:0.82rem;">
-        <!-- Controls -->
-        <div
-          style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem;"
+    return html` <div
+      style="font-family:sans-serif;padding:0.5rem;font-size:0.82rem;"
+    >
+      <!-- Toolbar -->
+      <div
+        style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;"
+      >
+        <input
+          .value=${state.search}
+          @input=${["search", (e) => e.target.value]}
+          placeholder="Search ${state.rows.length} rows..."
+          style="flex:1;min-width:120px;padding:0.35rem 0.5rem;border:1px solid #d0d0d0;border-radius:6px;font-size:0.82rem;outline:none;"
+        />
+        <label style="font-size:0.72rem;opacity:0.6;">Cols</label>
+        <input
+          type="range"
+          min="3"
+          max="10"
+          value="${state.cols}"
+          @input=${["setCols", (e) => parseInt(e.target.value)]}
+          style="width:50px;"
+        />
+        <span style="font-size:0.72rem;opacity:0.5;"
+          >${filtered.length} rows · ${currentPage}/${totalPages}</span
         >
-          <input
-            .value=${state.search}
-            @input=${["search", (e) => e.target.value]}
-            placeholder="Search ${state.rows.length} rows..."
-            style="flex:1;min-width:120px;padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;"
-          />
+      </div>
 
-          <label style="font-size:0.75rem;color:#888;">Cols</label>
-          <input
-            type="range"
-            min="3"
-            max="10"
-            value="${state.cols}"
-            @input=${["setCols", (e) => parseInt(e.target.value)]}
-            style="width:60px;"
-          />
-
-          <select
-            .value=${state.mode}
-            @change=${["setMode", (e) => e.target.value]}
-            style="padding:0.2rem 0.4rem;border:1px solid #ccc;border-radius:4px;font-size:0.75rem;"
-          >
-            <option value="virtual">♻ Virtual Reuse</option>
-            <option value="real">📦 Real Instances</option>
-          </select>
-
-          <span style="font-size:0.75rem;color:#888;">
-            ${filtered.length} rows · page ${currentPage}/${totalPages}
-          </span>
-        </div>
-
-        <!-- Column Headers -->
+      <!-- Table -->
+      <div style="border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+        <!-- Header -->
         <div
-          style="display:flex;border-bottom:2px solid #ddd;background:#f5f5f5;font-weight:600;"
+          style="display:flex;background:#f5f5f7;border-bottom:2px solid #e0e0e0;font-weight:600;font-size:0.78rem;"
         >
           ${colNames.map(
-            (col) => html`
-              <div
+            (col) =>
+              html` <div
                 @click=${() => send("sort", col)}
-                style="padding:0.4rem 0.6rem;font-size:0.8rem;cursor:pointer;user-select:none;
-                       width:${Math.max(
-                  80,
-                  Math.min(150, 1200 / state.cols),
-                )}px;
-                       color:${state.sortKey === col ? "#646cff" : "#555"};"
+                style="padding:0.5rem 0.6rem;cursor:pointer;user-select:none;width:${colW}px;
+                 color:${state.sortKey === col
+                  ? "#646cff"
+                  : "#444"};transition:color 0.15s;"
+                onmouseover="this.style.background='#eee'"
+                onmouseout="this.style.background=''"
               >
-                ${col}
-                ${state.sortKey === col
+                ${col}${state.sortKey === col
                   ? state.sortDir === "asc"
                     ? " ▲"
                     : " ▼"
                   : ""}
-              </div>
-            `,
+              </div>`,
           )}
         </div>
 
-        <!-- Rows (rendered via computeParts → compose in slot) -->
-        <div id="grid-rows" style="max-height:420px;overflow-y:auto;">
-          <div style="min-height:${filtered.length * 28}px;position:relative;">
-            <!-- Rows are mounted imperatively via computeParts/compose.
-                 In 'virtual' mode, only ~20 Row instances exist.
-                 In 'real' mode, one instance per row. -->
-          </div>
+        <!-- Rows -->
+        <div style="max-height:400px;overflow-y:auto;">
+          ${visible.length === 0
+            ? html`
+                <div style="padding:2rem;text-align:center;opacity:0.4;">
+                  No matching rows
+                </div>
+              `
+            : visible.map((row, i) => {
+                const globalIdx = state.start + i;
+                const isEven = globalIdx % 2 === 0;
+                const isSelected = state.selectedRow === globalIdx;
+                return html` <div
+                  @click=${() => send("select", globalIdx)}
+                  style="display:flex;cursor:pointer;transition:background 0.12s;
+                   background:${isSelected
+                    ? "#e8e8ff"
+                    : isEven
+                      ? "#fafbfc"
+                      : "white"};
+                   border-bottom:1px solid #eee;"
+                  onmouseover="this.style.background='${isSelected
+                    ? "#dddfff"
+                    : "#f0f0f5"}'"
+                  onmouseout="this.style.background='${isSelected
+                    ? "#e8e8ff"
+                    : isEven
+                      ? "#fafbfc"
+                      : "white"}'"
+                >
+                  ${Object.entries(row)
+                    .filter(([k]) => k !== "id")
+                    .map(([k, v]) => {
+                      const isNum = typeof v === "number";
+                      const isStatus = k === "col3" && state.cols >= 4;
+                      let statusColor = "";
+                      if (isStatus) {
+                        if (v === "Active")
+                          statusColor = "background:#e6f9ed;color:#1a7d3a;";
+                        else if (v === "Inactive")
+                          statusColor = "background:#fce4e4;color:#c0392b;";
+                        else if (v === "Pending")
+                          statusColor = "background:#fff8e1;color:#b8860b;";
+                        else statusColor = "background:#e8e8f0;color:#555;";
+                      }
+                      return html` <div
+                        style="padding:0.45rem 0.6rem;font-size:0.8rem;width:${colW}px;
+                            text-align:${isNum ? "right" : "left"};
+                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                      >
+                        ${isStatus
+                          ? html`<span
+                              style="padding:0.1rem 0.5rem;border-radius:999px;font-size:0.7rem;font-weight:600;${statusColor}"
+                              >${v}</span
+                            >`
+                          : String(v)}
+                      </div>`;
+                    })}
+                </div>`;
+              })}
         </div>
-
-        <!-- Pagination -->
-        <div
-          style="display:flex;gap:0.5rem;justify-content:center;align-items:center;margin-top:0.5rem;"
-        >
-          <button
-            @click=${() => send("pageUp")}
-            style="padding:0.25rem 0.6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:0.78rem;"
-            ?disabled=${state.start === 0}
-          >
-            ← Prev
-          </button>
-          <span style="font-size:0.78rem;color:#888;"
-            >${state.start + 1}–${Math.min(
-              state.start + state.pageSize,
-              filtered.length,
-            )}</span
-          >
-          <button
-            @click=${() => send("pageDown")}
-            style="padding:0.25rem 0.6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:0.78rem;"
-            ?disabled=${state.start + state.pageSize >= filtered.length}
-          >
-            Next →
-          </button>
-        </div>
-
-        <p
-          style="font-size:0.7rem;color:#aaa;text-align:center;margin-top:0.5rem;"
-        >
-          ${state.mode === "virtual"
-            ? "♻ Virtual: ~20 Row instances reused across " +
-              filtered.length +
-              " rows"
-            : "📦 Real: one Row instance per visible row (" +
-              Math.min(state.pageSize, filtered.length - state.start) +
-              " instances)"}
-          · Sort by clicking headers · Configurable cols · 500 rows
-        </p>
       </div>
-    `;
+
+      <!-- Pagination -->
+      <div
+        style="display:flex;gap:0.5rem;justify-content:center;align-items:center;margin-top:0.75rem;"
+      >
+        <button
+          @click=${() => send("pageUp")}
+          style="padding:0.3rem 0.8rem;border:1px solid #d0d0d0;border-radius:6px;cursor:pointer;font-size:0.78rem;background:white;transition:all 0.15s;"
+          ?disabled=${state.start === 0}
+        >
+          ← Prev
+        </button>
+        <span style="font-size:0.78rem;opacity:0.5;"
+          >${state.start + 1}–${end} of ${filtered.length}</span
+        >
+        <button
+          @click=${() => send("pageDown")}
+          style="padding:0.3rem 0.8rem;border:1px solid #d0d0d0;border-radius:6px;cursor:pointer;font-size:0.78rem;background:white;transition:all 0.15s;"
+          ?disabled=${end >= filtered.length}
+        >
+          Next →
+        </button>
+      </div>
+
+      <p
+        style="font-size:0.7rem;opacity:0.4;text-align:center;margin-top:0.5rem;"
+      >
+        ${state.rows.length} rows · ${state.cols} cols · sort by clicking
+        headers · search · paginate
+      </p>
+    </div>`;
   },
 
-  mount: (el, ctx) => {
-    // Imperatively mount/reuse Row instances into #grid-rows
-    const container = el.querySelector("#grid-rows");
-    if (!container) return;
-
-    let instances = [];
-
-    function syncRows() {
-      const s = DataGrid.loop.get();
-      const filtered = s.search
-        ? s.rows.filter((r) =>
-            Object.values(r).some((v) =>
-              String(v).toLowerCase().includes(s.search.toLowerCase()),
-            ),
-          )
-        : s.rows;
-      const end = Math.min(s.start + s.pageSize, filtered.length);
-      const visibleItems = filtered.slice(s.start, end);
-
-      container.innerHTML = "";
-      const wrapper = document.createElement("div");
-      wrapper.style.minHeight = filtered.length * 28 + "px";
-      wrapper.style.position = "relative";
-
-      if (s.mode === "virtual") {
-        // Virtual reuse: keep a pool, update props
-        instances = [];
-        for (let i = 0; i < visibleItems.length; i++) {
-          const item = visibleItems[i];
-          const globalIdx = s.start + i;
-          const inst = Row.create({
-            index: globalIdx,
-            cells: Object.entries(item)
-              .filter(([k]) => k !== "id")
-              .map(([k, v]) => ({
-                key: k,
-                value: String(v),
-                align: typeof v === "number" ? "right" : "left",
-                width: Math.max(80, Math.min(150, 1200 / s.cols)),
-              })),
-            selected: s.selectedRow === globalIdx,
-          });
-          instances.push(inst);
-          inst.mount(wrapper);
-        }
-      } else {
-        // Real instances: create new for each visible row
-        for (let i = 0; i < visibleItems.length; i++) {
-          const item = visibleItems[i];
-          const globalIdx = s.start + i;
-          const inst = Row.create({
-            index: globalIdx,
-            cells: Object.entries(item)
-              .filter(([k]) => k !== "id")
-              .map(([k, v]) => ({
-                key: k,
-                value: String(v),
-                align: typeof v === "number" ? "right" : "left",
-                width: Math.max(80, Math.min(150, 1200 / s.cols)),
-              })),
-            selected: s.selectedRow === globalIdx,
-          });
-          inst.mount(wrapper);
-        }
-      }
-
-      container.appendChild(wrapper);
-    }
-
-    syncRows();
-    const unsub = DataGrid.loop.subscribe(() => syncRows());
-    return () => {
-      unsub();
-      container.innerHTML = "";
-    };
+  mount: () => {
+    injectAnimations();
   },
 });
 
-export { DataGrid, Row, Cell };
+export { DataGrid };
 export default DataGrid;
