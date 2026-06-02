@@ -1,9 +1,10 @@
 import { html, component } from "@uploop/html";
 import { inject } from "@uploop/css";
 import { Counter } from "./counter/main.js";
+import { CSSDemo } from "./css-demo/main.js";
 import { Todo } from "./todo/main.js";
 import { Form } from "./form/main.js";
-import { GridExample } from "./grid/main.js";
+import { DataGrid } from "./grid/main.js";
 import { Blog } from "./blog/main.js";
 import { ImageCarousel } from "./carousel/main.js";
 import { Paint } from "./paint/main.js";
@@ -21,9 +22,10 @@ const tabGroups = [
     name: "Apps",
     tabs: [
       { id: "counter", label: "Counter", comp: Counter },
+      { id: "css", label: "🎨 CSS Utils", comp: CSSDemo },
       { id: "todo", label: "Todos", comp: Todo },
       { id: "form", label: "Form", comp: Form },
-      { id: "grid", label: "Grid", comp: GridExample },
+      { id: "grid", label: "Grid", comp: DataGrid },
       { id: "blog", label: "Blog", comp: Blog },
     ],
   },
@@ -55,7 +57,7 @@ function getTabFromHash() {
 }
 
 const DemoApp = component("DemoApp", {
-  state: { tab: getTabFromHash(), debugTab: "graph", autoRefresh: true },
+  state: { tab: getTabFromHash(), debugTab: "", autoRefresh: true },
 
   update: {
     switch: (s, tab) => {
@@ -111,7 +113,7 @@ const DemoApp = component("DemoApp", {
 
         <div
           id="demo-slot"
-          style="border:1px solid #e0e0e0;border-radius:12px;background:white;box-shadow:0 2px 8px rgba(0,0,0,0.04);min-height:180px;"
+          style="border:1px solid var(--color-border,#e0e0e0);border-radius:12px;background:var(--color-bg,white);box-shadow:0 2px 8px rgba(0,0,0,0.04);min-height:180px;"
         ></div>
 
         <!-- ========== HyperGraph Debug Panel ========== -->

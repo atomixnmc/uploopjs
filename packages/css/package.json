@@ -9,6 +9,9 @@
       "import": "./src/index.js"
     }
   },
+  "scripts": {
+    "test": "vitest run"
+  },
   "files": [
     "src"
   ]

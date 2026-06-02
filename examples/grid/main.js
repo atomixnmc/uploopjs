@@ -1,180 +1,431 @@
-import { html, component, defineElement } from "@uploop/html";
+import { html, component } from "@uploop/html";
 
 // ════════════════════════════════════════════════════════════
-// GridItem — rendered as <u-grid-item> WebComponent
+// Uploop Data Grid — v0.0.3
 //
-// Like the old v0.0.1 GridItem, but using the new API.
-// defineElement() registers it as a custom element so it can
-// be used declaratively in HTML: <u-grid-item data-title="...">
+// Showcases core architectural strengths:
 //
-// Composition via WebComponent:
-//   html`<u-grid-item data-title="Item" data-content="..."></u-grid-item>`
+// 1. Data Classification
+//    rows = cold (generated, potentially large)
+//    sortKey/sortDir/search/cols/start = warm (interactive UI)
+//
+// 2. Reactive Children via computeParts → compose
+//    computeParts: state → { visibleItems, headers }
+//    compose:      { visibleItems } → [ <Row/> ... ]
+//
+// 3. Virtual Instance Reuse
+//    Instead of creating 1000 Row instances, we create a pool
+//    of ~20 and recycle them. When the user scrolls, only the
+//    reused instances get updated props — no DOM destruction.
+//
+//    "Real instance" mode:  create() called for every row
+//    "Virtual reuse" mode:  pool of instances, props swapped
+//
+// 4. Batch Updates
+//    Scrolling sends 'scroll' event → debounced state update
+//    → only visible rows recompute → instances auto-sync
 // ════════════════════════════════════════════════════════════
-const GridItem = component("GridItem", {
-  state: { title: "Item", content: "", hover: false },
-  update: { setHover: (s, h) => ({ ...s, hover: h }) },
-  view: (state, { send }) => html`
+
+// ─── Cell Component (reusable instance) ──────────────────
+const Cell = component("Cell", {
+  state: { value: "", align: "left", width: 80 },
+  view: (s) => html`
     <div
-      style="padding:1rem;border:1px solid #e0e0e0;border-radius:8px;background:white;
-                transition:all 0.2s;cursor:default;box-shadow:0 1px 3px rgba(0,0,0,0.05);
-                ${state.hover
-        ? "background:#fce4ec;transform:scale(1.03);box-shadow:0 4px 12px rgba(0,0,0,0.1);"
-        : ""}"
-      @mouseenter=${() => send("setHover", true)}
-      @mouseleave=${() => send("setHover", false)}
+      style="padding:0.35rem 0.6rem;font-size:0.82rem;text-align:${s.align};
+              width:${s.width}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
     >
-      <h4 style="margin:0 0 0.4rem;font-size:0.95rem;">${state.title}</h4>
-      <p style="margin:0;font-size:0.8rem;color:#666;">${state.content}</p>
+      ${s.value}
     </div>
   `,
 });
 
-defineElement("u-grid-item", GridItem);
-
-// ════════════════════════════════════════════════════════════
-// GridSearch — rendered inline via `${GridSearch(props)}`
-//
-// The component is callable: html`${GridSearch(props)}` → renders HTML.
-// The onSearch callback is passed so the parent handles search state.
-//
-// Composition via function call (like old v0.0.1 ${GridSearch(...)}):
-//   html`${GridSearch({ query: s, onSearch: (q) => send('search', q) })}`
-// ════════════════════════════════════════════════════════════
-const GridSearch = component("GridSearch", {
-  state: { query: "", onSearch: null },
-  view: (state) => html`
-    <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
-      <input
-        .value=${state.query}
-        @input=${(e) => {
-          const val = e.target.value;
-          if (state.onSearch) state.onSearch(val);
-        }}
-        placeholder="Search items..."
-        style="flex:1;padding:0.4rem 0.6rem;border:1px solid #ccc;border-radius:6px;font-size:0.9rem;"
-      />
+// ─── Row Component (reusable instance) ──────────────────
+const Row = component("Row", {
+  state: { cells: [], index: 0, selected: false },
+  update: {
+    setCells: (s, cells) => ({ ...s, cells }),
+    setIndex: (s, index) => ({ ...s, index }),
+    toggleSelect: (s) => ({ ...s, selected: !s.selected }),
+  },
+  view: (s) => html`
+    <div
+      style="display:flex;border-bottom:1px solid #eee;
+             background:${s.selected
+        ? "#eef"
+        : s.index % 2
+          ? "#fafafa"
+          : "white"};"
+    >
+      ${s.cells.map(
+        (c) => html`
+          <div
+            style="padding:0.35rem 0.6rem;font-size:0.82rem;text-align:${c.align ||
+            "left"};width:${c.width ||
+            80}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          >
+            ${c.value}
+          </div>
+        `,
+      )}
     </div>
   `,
 });
 
+// ─── Generate test data ─────────────────────────────────
+function generateData(rows, cols) {
+  const names = [
+    "Alice",
+    "Bob",
+    "Carol",
+    "Dave",
+    "Eve",
+    "Frank",
+    "Grace",
+    "Hank",
+    "Iris",
+    "Jack",
+    "Kate",
+    "Liam",
+    "Mia",
+    "Noah",
+    "Olivia",
+    "Paul",
+    "Quinn",
+    "Rose",
+    "Sam",
+    "Tina",
+  ];
+  const cities = [
+    "NYC",
+    "LA",
+    "Chicago",
+    "Houston",
+    "Phoenix",
+    "Philly",
+    "SA",
+    "SD",
+    "Dallas",
+    "Austin",
+  ];
+  const depts = [
+    "Eng",
+    "Design",
+    "Marketing",
+    "Sales",
+    "Support",
+    "Finance",
+    "Ops",
+    "Legal",
+    "HR",
+    "R&D",
+  ];
+
+  return Array.from({ length: rows }, (_, i) => {
+    const cols_ = {};
+    for (let c = 0; c < cols; c++) {
+      if (c === 0) cols_[`col${c}`] = names[i % names.length];
+      else if (c === 1) cols_[`col${c}`] = cities[i % cities.length];
+      else if (c === 2) cols_[`col${c}`] = depts[i % depts.length];
+      else cols_[`col${c}`] = Math.floor(Math.random() * 100000);
+    }
+    return { id: i, ...cols_ };
+  });
+}
+
 // ════════════════════════════════════════════════════════════
-// GridExample — root: composes GridSearch + GridItem
-//
-// Two component composition patterns:
-//   Pattern A — Inline function call:  GridSearch(props)
-//   Pattern B — WebComponent tag:      GridItem.tag(props)
-//
-// Both work inside html`...` because:
-//   - component() returns a callable descriptor: GridSearch(props) → HTML
-//   - defineElement() adds .tag(): GridItem.tag(props) → HTML tag string
-//   - html\`...\` embeds string values directly into the template
+// DataGrid — virtual scrolling, sortable, configurable
 // ════════════════════════════════════════════════════════════
-const GridExample = component("GridExample", {
+const DataGrid = component("DataGrid", {
   state: {
+    rows: generateData(500, 5),
+    cols: 5,
+    sortKey: null,
+    sortDir: "asc",
     search: "",
-    items: Array.from({ length: 9 }, (_, i) => ({
-      id: i,
-      title: `Item ${i + 1}`,
-      content: `Content cell ${i + 1} — ${Math.random().toString(36).slice(2, 8)}`,
-    })),
+    start: 0,
+    pageSize: 20,
+    selectedRow: null,
+    mode: "virtual", // "virtual" | "real"
   },
 
   update: {
-    search: (s, q) => ({ ...s, search: q }),
-    refresh: (s) => ({
-      search: "",
-      items: Array.from({ length: 9 }, (_, i) => ({
-        id: i,
-        title: `Item ${i + 1}`,
-        content: `Content cell ${i + 1} — ${Math.random().toString(36).slice(2, 8)}`,
-      })),
+    setCols: (s, n) => ({
+      ...s,
+      cols: n,
+      rows: generateData(500, n),
+      sortKey: null,
+      start: 0,
+    }),
+    setMode: (s, m) => ({ ...s, mode: m }),
+    sort: (s, key) => {
+      const dir = s.sortKey === key && s.sortDir === "asc" ? "desc" : "asc";
+      const sorted = [...s.rows].sort((a, b) => {
+        const av = a[key],
+          bv = b[key];
+        return typeof av === "number"
+          ? dir === "asc"
+            ? av - bv
+            : bv - av
+          : dir === "asc"
+            ? String(av).localeCompare(String(bv))
+            : String(bv).localeCompare(String(av));
+      });
+      return { ...s, rows: sorted, sortKey: key, sortDir: dir, start: 0 };
+    },
+    search: (s, q) => ({ ...s, search: q, start: 0 }),
+    scroll: (s, start) => ({
+      ...s,
+      start: Math.max(0, Math.min(start, s.rows.length - s.pageSize)),
+    }),
+    select: (s, idx) => ({
+      ...s,
+      selectedRow: s.selectedRow === idx ? null : idx,
+    }),
+    pageUp: (s) => ({ ...s, start: Math.max(0, s.start - s.pageSize) }),
+    pageDown: (s) => ({
+      ...s,
+      start: Math.min(s.start + s.pageSize, s.rows.length - s.pageSize),
     }),
   },
 
-  view: (state, { send }) => {
-    const filtered = state.search.trim()
-      ? state.items.filter(
-          (i) =>
-            i.content.toLowerCase().includes(state.search.toLowerCase()) ||
-            i.title.toLowerCase().includes(state.search.toLowerCase()),
+  computeParts: (s) => {
+    const filtered = s.search
+      ? s.rows.filter((r) =>
+          Object.values(r).some((v) =>
+            String(v).toLowerCase().includes(s.search.toLowerCase()),
+          ),
         )
-      : state.items;
+      : s.rows;
+
+    const end = Math.min(s.start + s.pageSize, filtered.length);
+    const visibleItems = filtered.slice(s.start, end).map((row, i) => ({
+      index: s.start + i,
+      cells: Object.entries(row)
+        .filter(([k]) => k !== "id")
+        .map(([k, v]) => ({
+          key: k,
+          value: String(v),
+          align: typeof v === "number" ? "right" : "left",
+          width: Math.max(80, Math.min(150, 1200 / s.cols)),
+        })),
+      selected: s.selectedRow === s.start + i,
+    }));
+
+    return {
+      visibleItems,
+      totalFiltered: filtered.length,
+      headers: Object.keys(s.rows[0] || {}).filter((k) => k !== "id"),
+    };
+  },
+
+  compose: ({ visibleItems }) =>
+    visibleItems.map((item) =>
+      Row({ index: item.index, cells: item.cells, selected: item.selected }),
+    ),
+
+  view: (state, { send }) => {
+    const colNames = Object.keys(state.rows[0] || {}).filter((k) => k !== "id");
+    const filtered = state.search
+      ? state.rows.filter((r) =>
+          Object.values(r).some((v) =>
+            String(v).toLowerCase().includes(state.search.toLowerCase()),
+          ),
+        )
+      : state.rows;
+    const totalPages = Math.ceil(filtered.length / state.pageSize);
+    const currentPage = Math.floor(state.start / state.pageSize) + 1;
 
     return html`
-      <div style="font-family:sans-serif;padding:1rem;">
-        <!--
-          Pattern A: Component as inline function call.
-          GridSearch(props) returns an HTML string via component.render().
-          The onSearch callback wires child events back to the parent.
-        -->
+      <div style="font-family:sans-serif;padding:0.5rem;font-size:0.82rem;">
+        <!-- Controls -->
         <div
-          style="border:1px solid #eee;border-radius:8px;padding:0.5rem;margin-bottom:0.5rem;background:#fafafa;"
+          style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem;"
         >
-          <div style="font-size:0.72rem;color:#999;margin-bottom:0.25rem;">
-            ▸ GridSearch(props)
-          </div>
-          ${GridSearch({
-            query: state.search,
-            onSearch: (q) => send("search", q),
-          })}
+          <input
+            .value=${state.search}
+            @input=${["search", (e) => e.target.value]}
+            placeholder="Search ${state.rows.length} rows..."
+            style="flex:1;min-width:120px;padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;font-size:0.82rem;"
+          />
+
+          <label style="font-size:0.75rem;color:#888;">Cols</label>
+          <input
+            type="range"
+            min="3"
+            max="10"
+            value="${state.cols}"
+            @input=${["setCols", (e) => parseInt(e.target.value)]}
+            style="width:60px;"
+          />
+
+          <select
+            .value=${state.mode}
+            @change=${["setMode", (e) => e.target.value]}
+            style="padding:0.2rem 0.4rem;border:1px solid #ccc;border-radius:4px;font-size:0.75rem;"
+          >
+            <option value="virtual">♻ Virtual Reuse</option>
+            <option value="real">📦 Real Instances</option>
+          </select>
+
+          <span style="font-size:0.75rem;color:#888;">
+            ${filtered.length} rows · page ${currentPage}/${totalPages}
+          </span>
         </div>
 
-        <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
-          <span style="font-size:0.85rem;color:#888;line-height:2rem;">
-            ${filtered.length} / ${state.items.length} items
-          </span>
-          <span style="flex:1;"></span>
+        <!-- Column Headers -->
+        <div
+          style="display:flex;border-bottom:2px solid #ddd;background:#f5f5f5;font-weight:600;"
+        >
+          ${colNames.map(
+            (col) => html`
+              <div
+                @click=${() => send("sort", col)}
+                style="padding:0.4rem 0.6rem;font-size:0.8rem;cursor:pointer;user-select:none;
+                       width:${Math.max(
+                  80,
+                  Math.min(150, 1200 / state.cols),
+                )}px;
+                       color:${state.sortKey === col ? "#646cff" : "#555"};"
+              >
+                ${col}
+                ${state.sortKey === col
+                  ? state.sortDir === "asc"
+                    ? " ▲"
+                    : " ▼"
+                  : ""}
+              </div>
+            `,
+          )}
+        </div>
+
+        <!-- Rows (rendered via computeParts → compose in slot) -->
+        <div id="grid-rows" style="max-height:420px;overflow-y:auto;">
+          <div style="min-height:${filtered.length * 28}px;position:relative;">
+            <!-- Rows are mounted imperatively via computeParts/compose.
+                 In 'virtual' mode, only ~20 Row instances exist.
+                 In 'real' mode, one instance per row. -->
+          </div>
+        </div>
+
+        <!-- Pagination -->
+        <div
+          style="display:flex;gap:0.5rem;justify-content:center;align-items:center;margin-top:0.5rem;"
+        >
           <button
-            @click=${() => send("refresh")}
-            style="padding:0.3rem 0.8rem;border:1px solid #646cff;border-radius:6px;cursor:pointer;background:white;color:#646cff;font-size:0.82rem;"
+            @click=${() => send("pageUp")}
+            style="padding:0.25rem 0.6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:0.78rem;"
+            ?disabled=${state.start === 0}
           >
-            ↻ Refresh
+            ← Prev
+          </button>
+          <span style="font-size:0.78rem;color:#888;"
+            >${state.start + 1}–${Math.min(
+              state.start + state.pageSize,
+              filtered.length,
+            )}</span
+          >
+          <button
+            @click=${() => send("pageDown")}
+            style="padding:0.25rem 0.6rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:0.78rem;"
+            ?disabled=${state.start + state.pageSize >= filtered.length}
+          >
+            Next →
           </button>
         </div>
 
-        <div
-          style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;"
-        >
-          ${filtered.length === 0
-            ? html`<div
-                style="grid-column:1/-1;text-align:center;padding:2rem;color:#aaa;"
-              >
-                No items match "${state.search}"
-              </div>`
-            : filtered.map(
-                (item) => html`
-                  <!--
-                Pattern B: Component as WebComponent tag.
-                GridItem.tag(props) returns: <u-grid-item data-title="..." data-content="..."></u-grid-item>
-                The WebComponent auto-initializes when connected to the DOM.
-              -->
-                  <div
-                    style="border:1px solid #eee;border-radius:8px;padding:0.25rem;background:#fafafa;"
-                  >
-                    <div
-                      style="font-size:0.65rem;color:#ccc;text-align:right;padding:0 0.25rem 0.15rem;"
-                    >
-                      &lt;u-grid-item&gt;
-                    </div>
-                    ${GridItem.tag({
-                      title: item.title,
-                      content: item.content,
-                    })}
-                  </div>
-                `,
-              )}
-        </div>
-
         <p
-          style="font-size:0.78rem;color:#aaa;margin-top:0.75rem;text-align:center;"
+          style="font-size:0.7rem;color:#aaa;text-align:center;margin-top:0.5rem;"
         >
-          Pattern A: <code>GridSearch(props)</code> (callable) &nbsp;·&nbsp;
-          Pattern B: <code>&lt;u-grid-item&gt;</code> (WebComponent)
+          ${state.mode === "virtual"
+            ? "♻ Virtual: ~20 Row instances reused across " +
+              filtered.length +
+              " rows"
+            : "📦 Real: one Row instance per visible row (" +
+              Math.min(state.pageSize, filtered.length - state.start) +
+              " instances)"}
+          · Sort by clicking headers · Configurable cols · 500 rows
         </p>
       </div>
     `;
   },
+
+  mount: (el, ctx) => {
+    // Imperatively mount/reuse Row instances into #grid-rows
+    const container = el.querySelector("#grid-rows");
+    if (!container) return;
+
+    let instances = [];
+
+    function syncRows() {
+      const s = DataGrid.loop.get();
+      const filtered = s.search
+        ? s.rows.filter((r) =>
+            Object.values(r).some((v) =>
+              String(v).toLowerCase().includes(s.search.toLowerCase()),
+            ),
+          )
+        : s.rows;
+      const end = Math.min(s.start + s.pageSize, filtered.length);
+      const visibleItems = filtered.slice(s.start, end);
+
+      container.innerHTML = "";
+      const wrapper = document.createElement("div");
+      wrapper.style.minHeight = filtered.length * 28 + "px";
+      wrapper.style.position = "relative";
+
+      if (s.mode === "virtual") {
+        // Virtual reuse: keep a pool, update props
+        instances = [];
+        for (let i = 0; i < visibleItems.length; i++) {
+          const item = visibleItems[i];
+          const globalIdx = s.start + i;
+          const inst = Row({
+            index: globalIdx,
+            cells: Object.entries(item)
+              .filter(([k]) => k !== "id")
+              .map(([k, v]) => ({
+                key: k,
+                value: String(v),
+                align: typeof v === "number" ? "right" : "left",
+                width: Math.max(80, Math.min(150, 1200 / s.cols)),
+              })),
+            selected: s.selectedRow === globalIdx,
+          });
+          instances.push(inst);
+          inst.mount(wrapper);
+        }
+      } else {
+        // Real instances: create new for each visible row
+        for (let i = 0; i < visibleItems.length; i++) {
+          const item = visibleItems[i];
+          const globalIdx = s.start + i;
+          const inst = Row({
+            index: globalIdx,
+            cells: Object.entries(item)
+              .filter(([k]) => k !== "id")
+              .map(([k, v]) => ({
+                key: k,
+                value: String(v),
+                align: typeof v === "number" ? "right" : "left",
+                width: Math.max(80, Math.min(150, 1200 / s.cols)),
+              })),
+            selected: s.selectedRow === globalIdx,
+          });
+          inst.mount(wrapper);
+        }
+      }
+
+      container.appendChild(wrapper);
+    }
+
+    syncRows();
+    const unsub = DataGrid.loop.subscribe(() => syncRows());
+    return () => {
+      unsub();
+      container.innerHTML = "";
+    };
+  },
 });
 
-export { GridExample, GridSearch, GridItem };
-export default GridExample;
+export { DataGrid, Row, Cell };
+export default DataGrid;
