@@ -269,6 +269,10 @@ const Blog = component("Blog", {
     }),
     setEditTitle: (s, v) => ({ ...s, editTitle: v }),
     setEditBody: (s, v) => ({ ...s, editBody: v }),
+    // NOTE: on every keystroke the entire blog view re-renders via innerHTML.
+    // This is a known limitation of the current replace strategy — acceptable
+    // for demos. v0.0.3's planned 'patch' strategy will update only the
+    // changed DOM nodes, eliminating this perf hit.
     saveEdit: (s) => {
       // Update the post in-place so detail view shows edited content
       const post = POSTS.find((p) => p.id === s.params?.id);

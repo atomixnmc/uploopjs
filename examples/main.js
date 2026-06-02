@@ -5,7 +5,9 @@ import { Todo } from "./todo/main.js";
 import { Form } from "./form/main.js";
 import { GridExample } from "./grid/main.js";
 import { Blog } from "./blog/main.js";
+import { ImageCarousel } from "./carousel/main.js";
 import { Paint } from "./paint/main.js";
+import { AudioPlayer } from "./audioplayer/main.js";
 import { Tetris } from "./tetris/main.js";
 import { LuckyWheel } from "./luckywheel/main.js";
 import { FishesGame } from "./fishes/main.js";
@@ -14,18 +16,37 @@ import { CarsApp } from "./cars/main.js";
 // Inject CSS utilities once
 inject();
 
-const tabs = [
-  { id: "counter", label: "Counter", comp: Counter },
-  { id: "todo", label: "Todos", comp: Todo },
-  { id: "form", label: "Form", comp: Form },
-  { id: "grid", label: "Grid", comp: GridExample },
-  { id: "blog", label: "Blog", comp: Blog },
-  { id: "paint", label: "Paint", comp: Paint },
-  { id: "tetris", label: "Tetris", comp: Tetris },
-  { id: "wheel", label: "Lucky Wheel", comp: LuckyWheel },
-  { id: "fishes", label: "Fishes 🐟", comp: FishesGame },
-  { id: "cars", label: "Cars 🚗", comp: CarsApp },
+const tabGroups = [
+  {
+    name: "Apps",
+    tabs: [
+      { id: "counter", label: "Counter", comp: Counter },
+      { id: "todo", label: "Todos", comp: Todo },
+      { id: "form", label: "Form", comp: Form },
+      { id: "grid", label: "Grid", comp: GridExample },
+      { id: "blog", label: "Blog", comp: Blog },
+    ],
+  },
+  {
+    name: "Media",
+    tabs: [
+      { id: "carousel", label: "🖼 Carousel", comp: ImageCarousel },
+      { id: "paint", label: "🎨 Paint", comp: Paint },
+      { id: "audioplayer", label: "🎵 Audio", comp: AudioPlayer },
+    ],
+  },
+  {
+    name: "Games",
+    tabs: [
+      { id: "tetris", label: "🎮 Tetris", comp: Tetris },
+      { id: "wheel", label: "🎡 Wheel", comp: LuckyWheel },
+      { id: "fishes", label: "🐟 Fishes", comp: FishesGame },
+      { id: "cars", label: "🚗 Cars", comp: CarsApp },
+    ],
+  },
 ];
+
+const tabs = tabGroups.flatMap((g) => g.tabs);
 
 // Read initial tab from URL hash, default to counter
 function getTabFromHash() {
@@ -60,23 +81,33 @@ const DemoApp = component("DemoApp", {
           </p>
         </div>
 
-        <div
-          style="display:flex;gap:0.35rem;justify-content:center;flex-wrap:wrap;margin-bottom:1.25rem;"
-        >
-          ${tabs.map(
-            (t) => html`
-              <button
-                @click=${() => send("switch", t.id)}
-                style="padding:0.45rem 0.9rem;border:none;border-radius:8px;cursor:pointer;font-size:0.88rem;font-weight:500;
-                     background:${state.tab === t.id ? "#646cff" : "#e8e8ed"};
-                     color:${state.tab === t.id ? "white" : "#333"};
-                     transition:all 0.15s;"
+        ${tabGroups.map(
+          (group) => html`
+            <div
+              style="display:flex;align-items:center;gap:0.35rem;justify-content:center;margin-bottom:0.25rem;"
+            >
+              <span
+                style="font-size:0.65rem;color:#aaa;font-weight:600;min-width:42px;text-align:right;text-transform:uppercase;letter-spacing:0.5px;"
+                >${group.name}</span
               >
-                ${t.label}
-              </button>
-            `,
-          )}
-        </div>
+              ${group.tabs.map(
+                (t) => html`
+                  <button
+                    @click=${() => send("switch", t.id)}
+                    style="padding:0.4rem 0.75rem;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:500;
+                         background:${state.tab === t.id
+                      ? "#646cff"
+                      : "#e8e8ed"};
+                         color:${state.tab === t.id ? "white" : "#333"};
+                         transition:all 0.15s;"
+                  >
+                    ${t.label}
+                  </button>
+                `,
+              )}
+            </div>
+          `,
+        )}
 
         <div
           id="demo-slot"
