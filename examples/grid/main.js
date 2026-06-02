@@ -379,7 +379,7 @@ const DataGrid = component("DataGrid", {
         for (let i = 0; i < visibleItems.length; i++) {
           const item = visibleItems[i];
           const globalIdx = s.start + i;
-          const inst = Row({
+          const inst = Row.create({
             index: globalIdx,
             cells: Object.entries(item)
               .filter(([k]) => k !== "id")
@@ -399,7 +399,7 @@ const DataGrid = component("DataGrid", {
         for (let i = 0; i < visibleItems.length; i++) {
           const item = visibleItems[i];
           const globalIdx = s.start + i;
-          const inst = Row({
+          const inst = Row.create({
             index: globalIdx,
             cells: Object.entries(item)
               .filter(([k]) => k !== "id")
