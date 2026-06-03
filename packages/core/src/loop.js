@@ -57,7 +57,9 @@ export function createLoop(config = {}) {
     update: updateHandlers = {},
     effect: effectHandlers = {},
     maxEventDepth = 100,
-    maxEventsPerTransaction = 0
+    maxEventsPerTransaction = 0,
+    error: errorConfig = {},
+    suspend: suspendConfig = {}
   } = config
 
   // Core state
@@ -83,12 +85,139 @@ export function createLoop(config = {}) {
   // Transaction-scoped event counters: Map<transaction, Map<eventType, count>>
   const _txCounts = new Map()
 
+  // ─── Async Metadata State ────────────────────────────────
+
+  /** @type {Map<string, { run: Function, debounce: number, interruptible: boolean }>} */
+  const _handlerMeta = new Map()
+
+  /** @type {Map<string, number>} event → timer ID for debounced handlers */
+  const _debounceTimers = new Map()
+
+  /** @type {Map<string, AbortController>} event → controller for interruptible handlers */
+  const _abortControllers = new Map()
+
+  /** @type {Map<string, { message: string, retriesLeft: number, fallback?: any }>} */
+  const _errors = new Map()
+
+  /** @type {Set<string>} events with in-flight async handlers */
+  const _pending = new Set()
+
+  // Parse handler metadata from config
+  for (const [name, handler] of Object.entries(updateHandlers)) {
+    if (typeof handler === 'object' && handler !== null && !Array.isArray(handler)) {
+      _handlerMeta.set(name, {
+        run: handler.run,
+        debounce: handler.debounce || 0,
+        interruptible: handler.interruptible || false
+      })
+    }
+  }
+
   // HyperGraph manifest
   const graph = {
     kind: 'uploop.loop',
     name: config.name || 'unnamed',
     nodes: { state: { type: 'data', access: 'readwrite' } },
     edges: []
+  }
+
+  // ─── Internal Helpers ────────────────────────────────────
+
+  /**
+   * Execute a handler's run function with error/suspend tracking.
+   * Called after debounce timer fires (or immediately for non-debounced).
+   */
+  function _executeHandler(event, state, args, envelope) {
+    const meta = _handlerMeta.get(event)
+    let signal = undefined
+
+    // ── Interruptible: abort previous, create new controller ──
+    if (meta && meta.interruptible) {
+      const prevCtrl = _abortControllers.get(event)
+      if (prevCtrl) prevCtrl.abort()
+      const ctrl = new AbortController()
+      _abortControllers.set(event, ctrl)
+      signal = ctrl.signal
+    }
+
+    const runFn = meta ? meta.run : updateHandlers[event]
+
+    // ── Execute handler ─────────────────────────────────────
+    let result
+    const execArgs = meta && meta.interruptible
+      ? [state, ...args, { signal }]
+      : [state, ...args]
+
+    // Track pending for async handlers
+    const maybeMarkPending = (promiseOrVal) => {
+      if (promiseOrVal instanceof Promise) {
+        _pending.add(event)
+        return promiseOrVal
+          .then(v => { _pending.delete(event); return v })
+          .catch(e => { _pending.delete(event); throw e })
+      }
+      return promiseOrVal
+    }
+
+    try {
+      result = maybeMarkPending(runFn(...execArgs))
+    } catch (err) {
+      _handleError(event, err)
+      return
+    }
+
+    // Handle async result
+    if (result instanceof Promise) {
+      result.then(
+        (resolved) => {
+          if (resolved !== undefined && resolved !== state) {
+            const nextState = { ...stateSignal.get(), ...resolved }
+            stateSignal.set(nextState)
+            notify()
+            runEffects()
+          }
+        },
+        (err) => {
+          _handleError(event, err)
+        }
+      )
+    } else if (result !== undefined && result !== state) {
+      const nextState = { ...state, ...result }
+      stateSignal.set(nextState)
+    }
+  }
+
+  function _handleError(event, err) {
+    const ec = errorConfig[event]
+    if (!ec) {
+      console.error(`[Uploop] Handler "${event}" error:`, err)
+      return
+    }
+
+    const prev = _errors.get(event)
+    const retriesLeft = prev ? prev.retriesLeft - 1 : (ec.retry || 0)
+    const entry = {
+      message: err.message || String(err),
+      retriesLeft,
+      fallback: ec.fallback
+    }
+    _errors.set(event, entry)
+
+    // Apply fallback state
+    if (ec.fallback !== undefined) {
+      const nextState = { ...stateSignal.get(), ...ec.fallback }
+      stateSignal.set(nextState)
+      notify()
+    }
+
+    // Schedule retry with exponential backoff
+    if (retriesLeft > 0) {
+      const maxRetries = ec.retry || 0
+      const delay = Math.pow(2, maxRetries - retriesLeft) * 1000
+      setTimeout(() => send(event, ...[]), delay)
+    } else {
+      console.error(`[Uploop] Handler "${event}" failed, no retries left:`, err)
+    }
   }
 
   // ─── Public API ──────────────────────────────────────────
@@ -114,7 +243,8 @@ export function createLoop(config = {}) {
    * depth and transaction counters.
    */
   function send(event, ...args) {
-    const handler = updateHandlers[event]
+    const rawHandler = updateHandlers[event]
+    const meta = _handlerMeta.get(event)
 
     // ── Create Event Envelope ──────────────────────────────
     const depth = _evDepth + 1
@@ -158,41 +288,78 @@ export function createLoop(config = {}) {
     }
 
     // ── No registered handler? ─────────────────────────────
-    if (!handler) {
+    if (!rawHandler) {
       if (config.onUnknownEvent) config.onUnknownEvent(event, ...args)
       return
     }
 
-    // ── Execute Handler (with context save/restore) ────────
+    // ── Debounce: delay handler execution ──────────────────
+    if (meta && meta.debounce > 0) {
+      const prevTimer = _debounceTimers.get(event)
+      if (prevTimer) clearTimeout(prevTimer)
+      const timerId = setTimeout(() => {
+        _debounceTimers.delete(event)
+        _executeWithContext(event, args, envelope)
+      }, meta.debounce)
+      _debounceTimers.set(event, timerId)
+      return
+    }
+
+    // ── Execute immediately (non-debounced) ────────────────
+    _executeWithContext(event, args, envelope)
+  }
+
+  /**
+   * Execute a handler within the event context save/restore wrapper.
+   * Used by both immediate and debounced paths.
+   */
+  function _executeWithContext(event, args, envelope) {
     const prevDepth = _evDepth
     const prevId = _evId
     const prevSource = _evSource
     const prevTransaction = _evTransaction
 
-    _evDepth = depth
+    _evDepth = envelope.depth
     _evId = envelope.id
     _evSource = envelope.source
-    _evTransaction = transaction
+    _evTransaction = envelope.transaction
 
     try {
-      batch(() => {
-        const currentState = stateSignal.get()
-        let result
+      const meta = _handlerMeta.get(event)
+      const handler = updateHandlers[event]
 
-        if (typeof handler === 'function') {
-          result = handler(currentState, ...args)
-        }
+      // If handler is an object (with metadata), delegate to _executeHandler
+      if (meta) {
+        batch(() => {
+          const currentState = stateSignal.get()
+          _executeHandler(event, currentState, envelope.payload, envelope)
+        }, {
+          notify: () => {
+            notify()
+            runEffects()
+          }
+        })
+      } else {
+        // Plain function handler — original behavior
+        batch(() => {
+          const currentState = stateSignal.get()
+          let result
 
-        if (result !== undefined && result !== currentState) {
-          const nextState = { ...currentState, ...result }
-          stateSignal.set(nextState)
-        }
-      }, {
-        notify: () => {
-          notify()
-          runEffects()
-        }
-      })
+          if (typeof handler === 'function') {
+            result = handler(currentState, ...envelope.payload)
+          }
+
+          if (result !== undefined && result !== currentState) {
+            const nextState = { ...currentState, ...result }
+            stateSignal.set(nextState)
+          }
+        }, {
+          notify: () => {
+            notify()
+            runEffects()
+          }
+        })
+      }
     } finally {
       _evDepth = prevDepth
       _evId = prevId
@@ -223,6 +390,13 @@ export function createLoop(config = {}) {
 
   function on(event, handler) {
     updateHandlers[event] = handler
+    if (typeof handler === 'object' && handler !== null && !Array.isArray(handler)) {
+      _handlerMeta.set(event, {
+        run: handler.run,
+        debounce: handler.debounce || 0,
+        interruptible: handler.interruptible || false
+      })
+    }
     graph.nodes[event] = { type: 'update', reads: ['state'], writes: ['state'] }
   }
 
@@ -240,6 +414,45 @@ export function createLoop(config = {}) {
     graph.edges.push([from, to])
   }
 
+  /**
+   * Returns true if an async handler for this event is currently running.
+   * @param {string} event
+   * @returns {boolean}
+   */
+  function isPending(event) {
+    return _pending.has(event)
+  }
+
+  /**
+   * Returns current error state for an event, or null.
+   * @param {string} event
+   * @returns {{ message: string, retriesLeft: number } | null}
+   */
+  function getError(event) {
+    const err = _errors.get(event)
+    if (!err) return null
+    return { message: err.message, retriesLeft: err.retriesLeft }
+  }
+
+  /**
+   * Clears error state for an event.
+   * @param {string} event
+   */
+  function clearError(event) {
+    _errors.delete(event)
+  }
+
+  /**
+   * Returns metadata for an event handler.
+   * @param {string} event
+   * @returns {{ debounce: number, interruptible: boolean } | null}
+   */
+  function getMeta(event) {
+    const meta = _handlerMeta.get(event)
+    if (!meta) return null
+    return { debounce: meta.debounce, interruptible: meta.interruptible }
+  }
+
   function describe() {
     const result = JSON.parse(JSON.stringify(graph))
     // Add event metadata (total/rejected counts for diagnostics)
@@ -247,10 +460,50 @@ export function createLoop(config = {}) {
       total: _evCounter,
       rejected: _evRejected
     }
+    // Add node-level metadata for update handlers
+    for (const [name, meta] of _handlerMeta) {
+      if (result.nodes[name]) {
+        if (meta.debounce > 0) result.nodes[name].debounce = meta.debounce
+        if (meta.interruptible) result.nodes[name].interruptible = true
+      }
+    }
+    // Add error config metadata
+    for (const name of Object.keys(errorConfig)) {
+      if (result.nodes[name]) {
+        const ec = errorConfig[name]
+        result.nodes[name].error = {
+          hasFallback: ec.fallback !== undefined,
+          retries: ec.retry || 0
+        }
+      }
+    }
+    // Add suspend config metadata
+    for (const name of Object.keys(suspendConfig)) {
+      if (result.nodes[name]) {
+        result.nodes[name].suspend = true
+      }
+    }
     return result
   }
 
   function dispose() {
+    // Clear all debounce timers
+    for (const [event, timerId] of _debounceTimers) {
+      clearTimeout(timerId)
+    }
+    _debounceTimers.clear()
+
+    // Abort all pending interruptible handlers
+    for (const [event, ctrl] of _abortControllers) {
+      ctrl.abort()
+    }
+    _abortControllers.clear()
+
+    // Clear remaining state
+    _errors.clear()
+    _pending.clear()
+    _handlerMeta.clear()
+
     subscribers.clear()
     effects.disposeAll()
     frame.dispose()
@@ -261,7 +514,15 @@ export function createLoop(config = {}) {
 
   // Register initial nodes
   for (const name of Object.keys(updateHandlers)) {
-    graph.nodes[name] = { type: 'update', reads: ['state'], writes: ['state'] }
+    const meta = _handlerMeta.get(name)
+    const nodeDef = { type: 'update', reads: ['state'], writes: ['state'] }
+    if (meta) {
+      if (meta.debounce > 0) nodeDef.debounce = meta.debounce
+      if (meta.interruptible) nodeDef.interruptible = true
+    }
+    if (errorConfig[name]) nodeDef.error = true
+    if (suspendConfig[name]) nodeDef.suspend = true
+    graph.nodes[name] = nodeDef
   }
   for (const name of Object.keys(effectHandlers)) {
     graph.nodes[name] = { type: 'effect' }
@@ -272,6 +533,7 @@ export function createLoop(config = {}) {
     frame, batch,
     use: (plugin) => use({ get, set, send, subscribe, frame, describe }, plugin),
     registerNode, registerEdge, describe, dispose,
+    isPending, getError, clearError, getMeta,
     events: {
       get total() { return _evCounter },
       get rejected() { return _evRejected },

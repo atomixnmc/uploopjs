@@ -8,3 +8,10 @@ export { createScope } from './scope.js'
 export { use } from './plugin.js'
 export { createDOMExecution, validateExecutionTarget, createRunner } from './execution.js'
 export { component, createComponentType } from './component.js'
+
+// Utilities
+export { uuid, seq } from './uuid.js'
+export { getPath, setPath } from './path.js'
+export { clone } from './clone.js'
+export { equals } from './equals.js'
+export { serialize, deserialize } from './serialize.js'
