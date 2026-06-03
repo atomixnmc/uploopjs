@@ -13,6 +13,7 @@ import { Tetris } from "./tetris/main.js";
 import { LuckyWheel } from "./luckywheel/main.js";
 import { FishesGame } from "./fishes/main.js";
 import { CarsApp } from "./cars/main.js";
+import { VideoPlayer } from "./videoplayer/main.js";
 
 // Inject CSS utilities once
 inject();
@@ -35,6 +36,7 @@ const tabGroups = [
       { id: "carousel", label: "🖼 Carousel", comp: ImageCarousel },
       { id: "paint", label: "🎨 Paint", comp: Paint },
       { id: "audioplayer", label: "🎵 Audio", comp: AudioPlayer },
+      { id: "videoplayer", label: "🎬 Video", comp: VideoPlayer },
     ],
   },
   {
