@@ -59,8 +59,8 @@ export function createDOMExecutionFull(domCtx) {
           applyBindings(target, snapshot._bindings, domCtx.send, domCtx.get?.())
         }
 
-        // Scan for scope/context/resource markers
-        processUploopAttributes(target, domCtx.ctx)
+        // Scan for scope/context/resource markers, collect pending VC data
+        const pendingVC = processUploopAttributes(target, domCtx.ctx)
 
         // Restore persistent resources (re-insert canvas etc.)
         if (domCtx.restoreResources && snapshot._resources) {
@@ -68,7 +68,7 @@ export function createDOMExecutionFull(domCtx) {
         }
 
         // Hydrate virtual container instances
-        processVirtualContainers(target, domCtx.ctx)
+        processVirtualContainers(target, domCtx.ctx, pendingVC)
       }
     }
   }
