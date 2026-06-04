@@ -187,10 +187,15 @@ const DemoApp = component("DemoApp", {
 
   update: {
     switch: (s, tab) => {
-      const url = new URL(window.location);
-      url.searchParams.set("tab", tab);
-      url.hash = ""; // clear any hash left by router examples
-      window.history.pushState({}, "", url);
+      // Update URL as side effect (replace, not push — avoids history bloat)
+      try {
+        const url = new URL(window.location);
+        url.searchParams.set("tab", tab);
+        url.hash = "";
+        window.history.replaceState({}, "", url);
+      } catch {
+        /* ignore URL errors */
+      }
       return { ...s, tab };
     },
   },
@@ -292,15 +297,6 @@ if (root) {
         "setComponents",
         tabs.map((t) => ({ id: t.id, label: t.label, comp: t.comp })),
       );
-    }
-  });
-
-  // Sync browser back/forward with tab state (query param based)
-  window.addEventListener("popstate", () => {
-    const p = new URLSearchParams(window.location.search);
-    const t = p.get("tab") || "";
-    if (tabs.find((tab) => tab.id === t) && DemoApp.loop.get().tab !== t) {
-      DemoApp.loop.send("switch", t);
     }
   });
 
