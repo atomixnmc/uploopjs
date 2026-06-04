@@ -90,7 +90,10 @@ export function html(strings, ...values) {
         const offset = bindings.length
         const innerBindings = value.bindings || []
         let htmlStr = value.toString()
-        for (let bi = 0; bi < innerBindings.length; bi++) {
+        // Remap in reverse order to prevent cascading index corruption:
+        // replacing click:2→click:3 BEFORE click:1→click:2 avoids
+        // the newly-created click:2 from being caught by the click:1→click:2 regex.
+        for (let bi = innerBindings.length - 1; bi >= 0; bi--) {
           const newIdx = offset + bi
           const oldIdx = innerBindings[bi].index
           innerBindings[bi].index = newIdx
@@ -121,7 +124,7 @@ export function html(strings, ...values) {
             const offset = bindings.length
             const innerBindings = v.bindings || []
             let htmlStr = v.toString()
-            for (let bi = 0; bi < innerBindings.length; bi++) {
+            for (let bi = innerBindings.length - 1; bi >= 0; bi--) {
               const newIdx = offset + bi
               const oldIdx = innerBindings[bi].index
               innerBindings[bi].index = newIdx

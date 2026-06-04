@@ -25,7 +25,6 @@ import { StateMachineDemo } from "./statemachine/main.js";
 import { AnimationDemo } from "./animation/main.js";
 import { AsyncDemo } from "./async-data/main.js";
 
-// Inject CSS utilities once
 inject();
 
 const tabGroups = [
@@ -72,7 +71,6 @@ const tabGroups = [
 
 const tabs = tabGroups.flatMap((g) => g.tabs);
 
-// Read initial tab from URL (?tab=xxx), default to landing
 function getTabFromQuery() {
   try {
     const p = new URLSearchParams(window.location.search);
@@ -82,8 +80,6 @@ function getTabFromQuery() {
     return "landing";
   }
 }
-
-// ── Landing/Hero section (plain function, receives DemoApp's send) ──
 
 function Landing({ send }) {
   return html`
@@ -99,7 +95,6 @@ function Landing({ send }) {
         graphs of typed nodes connected by edges. No build step, no JSX, no
         virtual DOM. Pure ESM that runs in the browser as-is.
       </p>
-
       <div
         style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;margin-bottom:2.5rem;"
       >
@@ -120,8 +115,6 @@ function Landing({ send }) {
           <span style="font-size:1.2rem;">⋮</span> GitHub
         </a>
       </div>
-
-      <!-- Feature grid -->
       <div
         style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;max-width:780px;margin:0 auto;text-align:left;"
       >
@@ -175,7 +168,6 @@ function Landing({ send }) {
           </p>
         </div>
       </div>
-
       <p style="margin-top:2rem;font-size:0.78rem;color:#aaa;">
         Pure ESM · No build · No JSX · HyperGraph architecture · 19 examples ·
         181 tests
@@ -183,8 +175,6 @@ function Landing({ send }) {
     </div>
   `;
 }
-
-// ── Main demo app ───────────────────────────────────────────
 
 const DemoApp = component("DemoApp", {
   state: { tab: getTabFromQuery() },
@@ -211,42 +201,47 @@ const DemoApp = component("DemoApp", {
         <div style="text-align:center;margin-bottom:0.5rem;">
           <h1 style="margin:0;font-size:1.6rem;">Uploop</h1>
           ${state.tab !== "landing"
-            ? html`
-                <button
-                  @click=${() => send("switch", "landing")}
-                  style="margin-top:0.5rem;padding:0.25rem 0.75rem;background:none;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:0.78rem;color:#888;"
-                >
-                  ← Home
-                </button>
-              `
+            ? html`<button
+                @click=${() => send("switch", "landing")}
+                style="margin-top:0.5rem;padding:0.25rem 0.75rem;background:none;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:0.78rem;color:#888;"
+              >
+                ← Home
+              </button>`
             : ""}
         </div>
 
         ${state.tab === "landing"
           ? Landing({ send })
           : html`
-              ${[
-                { id: "counter", label: "Counter" },
-                { id: "todo", label: "Todos" },
-                { id: "router", label: "Router" },
-                { id: "cars", label: "Cars" },
-              ].map(
-                (t) => html`
-                  <button
-                    @click=${() => send("switch", t.id)}
-                    style="padding:0.4rem 0.75rem;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:500;
-                     background:${state.tab === t.id ? "#646cff" : "#e8e8ed"};
-                     color:${state.tab === t.id ? "white" : "#333"};
-                     transition:all 0.15s;"
+              ${tabGroups.map(
+                (group) => html`
+                  <div
+                    style="display:flex;align-items:center;gap:0.35rem;justify-content:center;margin-bottom:0.25rem;flex-wrap:wrap;"
                   >
-                    ${t.label}
-                  </button>
+                    <span
+                      style="font-size:0.65rem;color:#aaa;font-weight:600;min-width:42px;text-align:right;text-transform:uppercase;letter-spacing:0.5px;"
+                      >${group.name}</span
+                    >
+                    ${group.tabs.map(
+                      (t) => html`
+                        <button
+                          @click=${() => send("switch", t.id)}
+                          style="padding:0.4rem 0.75rem;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:500;
+                           background:${state.tab === t.id
+                            ? "#646cff"
+                            : "#e8e8ed"};
+                           color:${state.tab === t.id ? "white" : "#333"};
+                           transition:all 0.15s;"
+                        >
+                          ${t.label}
+                        </button>
+                      `,
+                    )}
+                  </div>
                 `,
               )}
-
               <div
                 id="demo-slot"
-                register-resource="demo-slot"
                 style="border:1px solid var(--color-border,#e0e0e0);border-radius:12px;background:var(--color-bg,white);box-shadow:0 2px 8px rgba(0,0,0,0.04);min-height:180px;"
               ></div>
             `}
@@ -268,19 +263,16 @@ if (root) {
 
   let _activeInstance = null;
 
-  // HyperGraph Inspector — mounted outside DemoApp's render cycle
   const inspectorRoot = document.getElementById("inspector-panel");
   const toggleBtn = document.getElementById("inspector-toggle");
   const inspector = InspectorPanel.create();
   inspector.mount(inspectorRoot);
   bindInspectorSend(inspector.loop.send);
 
-  // Toggle button
   toggleBtn.addEventListener("click", () => {
     inspectorRoot.classList.toggle("open");
   });
 
-  // Feed component data to inspector on tab changes
   DemoApp.loop.subscribe(() => {
     const currentTab = DemoApp.loop.get().tab;
     if (currentTab === "landing") return;
@@ -302,7 +294,6 @@ if (root) {
       const currentTab = DemoApp.loop.get().tab;
       if (currentTab === lastTab) return;
       if (currentTab === "landing") {
-        // Unmount any active example
         for (const key of Object.keys(mountMap)) {
           if (mountMap[key]) {
             mountMap[key]();
@@ -326,10 +317,7 @@ if (root) {
       const el = document.getElementById("demo-slot");
       if (!el) return;
 
-      // Clear any stale content before mounting (resource restore may have
-      // left previous example's DOM behind)
       el.innerHTML = "";
-
       mountMap[currentTab] = activeTab.comp.mount(el);
       _activeInstance = activeTab.comp;
 
