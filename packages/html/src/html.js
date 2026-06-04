@@ -12,6 +12,16 @@
  * @param {...any} values
  * @returns {Object} Template descriptor
  */
+// ════════════════════════════════════════════════════════════
+// Component Registry — for resolving PascalCase tags in html()
+// ════════════════════════════════════════════════════════════
+
+const _componentRegistry = {}
+
+export function registerComponent(name, comp) {
+  _componentRegistry[name] = comp
+}
+
 export function html(strings, ...values) {
   const parts = []
   const bindings = []
@@ -146,7 +156,44 @@ export function html(strings, ...values) {
     }
   })
 
-  const template = parts.join('')
+  let template = parts.join('')
+
+  // Post-process: resolve PascalCase component tags from registry
+  const pascalRe = /<([A-Z]\w*)\s*([^>]*)\/>/g
+  let pm
+  while ((pm = pascalRe.exec(template))) {
+    const tagName = pm[1]
+    const comp = _componentRegistry[tagName]
+    if (!comp) continue
+
+    // Parse attributes from the matched tag
+    const props = {}
+    const attrStr = pm[2] || ''
+    const attrRe = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
+    let am
+    while ((am = attrRe.exec(attrStr))) {
+      const key = am[1]
+      if (am[2] !== undefined) { const n = Number(am[2]); props[key] = isNaN(n) ? am[2] : n }
+      else if (am[3] !== undefined) { const n = Number(am[3]); props[key] = isNaN(n) ? am[3] : n }
+    }
+    const bare = attrStr.replace(/\w+\s*=\s*(?:"[^"]*"|'[^']*')/g, '')
+    const boolRe = /(\w+)(?=\s|$)/g
+    let bm
+    while ((bm = boolRe.exec(bare))) {
+      if (!(bm[1] in props)) props[bm[1]] = true
+    }
+
+    // Create component instance and render
+    try {
+      const inst = comp.create(props)
+      const rendered = inst.render()
+      template = template.replace(pm[0], rendered)
+      // Reset regex lastIndex since template changed
+      pascalRe.lastIndex = pm.index + rendered.length
+    } catch (e) {
+      console.warn('[Uploop] failed to render component "' + tagName + '":', e)
+    }
+  }
 
   return {
     template,
@@ -460,11 +507,12 @@ export function componentTag(classes = {}) {
       if (i < values.length) raw += '\x00' + i + '\x00'
     }
 
-    let Cls, attrStr
+    let Cls, attrStr, tagName = ''
 
     // Case 1: <Wheel .../> — literal tag, lookup from classes
     const tagMatch = raw.match(/^\s*<(\w+)([^>]*?)\s*\/>\s*$/s)
     if (tagMatch) {
+      tagName = tagMatch[1]
       Cls = classes[tagMatch[1]]
       if (!Cls) return null
       attrStr = tagMatch[2] || ''
@@ -475,20 +523,31 @@ export function componentTag(classes = {}) {
         const clsIdx = parseInt(dynMatch[1])
         if (clsIdx < values.length && typeof values[clsIdx] === 'function') {
           Cls = values[clsIdx]
+          tagName = Cls.name || 'DynamicComponent'
           attrStr = dynMatch[2] || ''
         } else { return null }
       } else { return null }
     }
 
+    // Check for :props= binding — pass raw JS object directly to Cls()
+    if (attrStr) {
+      const pm = attrStr.match(/:props\s*=\s*\x00(\d+)\x00/)
+      if (pm) {
+        const idx = parseInt(pm[1])
+        if (idx < values.length) return Cls(values[idx])
+      }
+    }
+
     // Parse attributes
     const props = {}
+    const quotedKeys = new Set()
     if (attrStr) {
       const attrRe = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\x00(\d+)\x00)/g
       let m
       while ((m = attrRe.exec(attrStr))) {
         const key = m[1]
-        if (m[2] !== undefined) { const n = Number(m[2]); props[key] = isNaN(n) ? m[2] : n }
-        else if (m[3] !== undefined) { const n = Number(m[3]); props[key] = isNaN(n) ? m[3] : n }
+        if (m[2] !== undefined) { const n = Number(m[2]); props[key] = isNaN(n) ? m[2] : n; quotedKeys.add(key) }
+        else if (m[3] !== undefined) { const n = Number(m[3]); props[key] = isNaN(n) ? m[3] : n; quotedKeys.add(key) }
         else if (m[4] !== undefined) {
           const idx = parseInt(m[4])
           props[key] = idx < values.length ? values[idx] : undefined
@@ -499,6 +558,39 @@ export function componentTag(classes = {}) {
       let bm
       while ((bm = boolRe.exec(bare))) {
         if (!(bm[1] in props)) props[bm[1]] = true
+      }
+    }
+
+    // ─── Dev-mode warnings ───────────────────────────────
+    if (typeof DEV !== 'undefined' && DEV) {
+      if (Cls._originalView) {
+        // 1. Unknown prop check via describe()
+        if (typeof Cls.describe === 'function') {
+          const graph = Cls.describe()
+          const knownKeys = new Set()
+          if (graph && graph.nodes) {
+            for (const [k, node] of Object.entries(graph.nodes)) {
+              if (node && node.type === 'data') knownKeys.add(k)
+            }
+          }
+          for (const key of Object.keys(props)) {
+            if (!knownKeys.has(key)) {
+              console.warn('[Uploop] ' + tagName + ': unknown prop "' + key + '"')
+            }
+          }
+        }
+        // 2. Function props with 'on' prefix — suggest @callback
+        for (const [key, val] of Object.entries(props)) {
+          if (typeof val === 'function' && key.startsWith('on')) {
+            console.warn('[Uploop] ' + tagName + ': prop "' + key + '" is a function — consider @' + key + ' for callbacks')
+          }
+        }
+        // 3. Quoted strings that look like booleans
+        for (const key of quotedKeys) {
+          if (props[key] === 'true' || props[key] === 'false') {
+            console.warn('[Uploop] ' + tagName + ': prop "' + key + '" is the string "' + props[key] + '" — use ${' + props[key] + '} or bare attribute for boolean')
+          }
+        }
       }
     }
 

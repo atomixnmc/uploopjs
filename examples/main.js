@@ -1,5 +1,6 @@
 import { html, component } from "@uploop/html";
 import { inject } from "@uploop/css";
+import { DEBUG_TABS, renderDebugContent } from "@uploop/devutils";
 import { Counter } from "./counter/main.js";
 import { CSSDemo } from "./css-demo/main.js";
 import { Todo } from "./todo/main.js";
@@ -68,11 +69,11 @@ const DemoApp = component("DemoApp", {
     },
     debugSwitch: (s, debugTab) => ({ ...s, debugTab }),
     toggleAutoRefresh: (s) => ({ ...s, autoRefresh: !s.autoRefresh }),
+    refresh: (s) => s,
   },
 
   view: (state, { send }) => {
     const activeComp = tabs.find((t) => t.id === state.tab)?.comp;
-    const graph = activeComp?.describe();
 
     return html`
       <div
@@ -115,6 +116,7 @@ const DemoApp = component("DemoApp", {
 
         <div
           id="demo-slot"
+          register-resource="demo-slot"
           style="border:1px solid var(--color-border,#e0e0e0);border-radius:12px;background:var(--color-bg,white);box-shadow:0 2px 8px rgba(0,0,0,0.04);min-height:180px;"
         ></div>
 
@@ -140,33 +142,26 @@ const DemoApp = component("DemoApp", {
               />
               auto-refresh
             </label>
-            ${!state.autoRefresh
-              ? html`
-                  <button
-                    @click=${(e) => {
-                      e.stopPropagation();
-                      send("debugSwitch", state.debugTab);
-                    }}
-                    style="font-size:0.7rem;padding:0.15rem 0.45rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:white;"
-                  >
-                    🔄 Refresh
-                  </button>
-                `
-              : ""}
+            ${
+              !state.autoRefresh
+                ? html`
+                    <button
+                      @click=${(e) => {
+                        e.stopPropagation();
+                        send("refresh");
+                      }}
+                      style="font-size:0.7rem;padding:0.15rem 0.45rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:white;"
+                    >
+                      🔄 Refresh
+                    </button>
+                  `
+                : ""
+            }
           </summary>
 
           <!-- Debug tabs -->
           <div style="display:flex;gap:2px;margin-top:0.5rem;">
-            ${[
-              { id: "graph", label: "Graph" },
-              { id: "nodes", label: "Nodes" },
-              { id: "edges", label: "Edges" },
-              { id: "state", label: "State" },
-              { id: "events", label: "Events" },
-              { id: "signals", label: "Signals" },
-              { id: "components", label: "Components" },
-              { id: "meta", label: "Metadata" },
-            ].map(
+            ${DEBUG_TABS.map(
               (dt) => html`
                 <button
                   @click=${() => send("debugSwitch", dt.id)}
@@ -186,30 +181,13 @@ const DemoApp = component("DemoApp", {
 
           <!-- Debug content -->
           <pre
+            id="debug-panel-pre"
             style="background:#1e1e2e;color:#cdd6f4;padding:0.8rem 1rem;border-radius:0 0 8px 8px;
                       overflow:auto;font-size:0.72rem;line-height:1.5;max-height:340px;margin:0;
                       font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;
                       white-space:pre-wrap;word-break:break-all;"
           >
-
-${state.debugTab === "graph"
-              ? renderGraphView(graph, activeComp)
-              : state.debugTab === "nodes"
-                ? renderNodesView(graph)
-                : state.debugTab === "edges"
-                  ? renderEdgesView(graph)
-                  : state.debugTab === "state"
-                    ? renderStateView(activeComp)
-                    : state.debugTab === "events"
-                      ? renderEventsView(graph)
-                      : state.debugTab === "signals"
-                        ? renderSignalsView(graph)
-                        : state.debugTab === "components"
-                          ? renderComponentsView(tabs)
-                          : state.debugTab === "meta"
-                            ? renderMetaView(graph)
-                            : ""}
-          </pre
+${renderDebugContent(state.debugTab, activeComp, tabs)}
           >
         </details>
 
@@ -221,168 +199,36 @@ ${state.debugTab === "graph"
       </div>
     `;
   },
+
+  mount: (el, ctx) => {
+    // Preserve scroll position of debug panel across renders
+    let _scrollTop = 0;
+    const unsub = DemoApp.loop.subscribe(() => {
+      // Wait for DOM to update (innerHTML is synchronous)
+      queueMicrotask(() => {
+        const pre = el.querySelector("#debug-panel-pre");
+        if (pre) {
+          pre.scrollTop = _scrollTop;
+        }
+      });
+    });
+    // Track scroll position from scroll events
+    el.addEventListener(
+      "scroll",
+      (e) => {
+        const pre = e.target.closest?.("#debug-panel-pre");
+        if (pre) _scrollTop = pre.scrollTop;
+      },
+      true,
+    ); // use capture to catch scroll on child elements
+    ctx.registerResource("debug-scroll", {
+      save: () => _scrollTop,
+      restore: (val) => {
+        _scrollTop = val;
+      },
+    });
+  },
 });
-
-// ─── Debug renderers ─────────────────────────────────────────
-
-function renderGraphView(graph, comp) {
-  if (!graph) return noGraph();
-  const nodeList = Object.entries(graph.nodes || {});
-  const edgeList = graph.edges || [];
-  const parts = [`╔══════════════════════════════════════╗`];
-  parts.push(`║  ${padRight("HyperGraph: " + (graph.name || "unnamed"), 38)}║`);
-  parts.push(`║  ${padRight("Kind: " + graph.kind, 38)}║`);
-  parts.push(`╚══════════════════════════════════════╝`);
-  parts.push(``);
-  // Visual graph: nodes with connections
-  parts.push(`  ┌─ Nodes (${nodeList.length})`);
-  for (const [name, def] of nodeList) {
-    const deps = def.dependsOn ? " ← " + def.dependsOn.join(", ") : "";
-    const reads = def.reads ? "  📖 " + def.reads.join(", ") : "";
-    const writes = def.writes ? "  ✏️ " + def.writes.join(", ") : "";
-    const access = def.access ? "  🔑 " + def.access : "";
-    parts.push(`  │`);
-    parts.push(`  ├── ${name}`);
-    parts.push(`  │    type: ${def.type}${access}${deps}${reads}${writes}`);
-  }
-  parts.push(`  │`);
-  parts.push(`  └─ Edges (${edgeList.length})`);
-  for (const [from, to] of edgeList) {
-    parts.push(`       ${from} → ${to}`);
-  }
-  return parts.join("\n");
-}
-
-function renderNodesView(graph) {
-  if (!graph) return noGraph();
-  const nodeList = Object.entries(graph.nodes || {});
-  if (nodeList.length === 0) return "  (no nodes)";
-  const parts = [];
-  for (const [name, def] of nodeList) {
-    parts.push(`  [${def.type}] ${name}`);
-    const props = [];
-    if (def.access) props.push("access:" + def.access);
-    if (def.dependsOn) props.push("depends:[" + def.dependsOn.join(",") + "]");
-    if (def.reads) props.push("reads:[" + def.reads.join(",") + "]");
-    if (def.writes) props.push("writes:[" + def.writes.join(",") + "]");
-    if (def.lifetime) props.push("lifetime:" + def.lifetime);
-    if (props.length) parts.push(`       ${props.join("  ")}`);
-  }
-  return parts.join("\n");
-}
-
-function renderEdgesView(graph) {
-  if (!graph) return noGraph();
-  const edges = graph.edges || [];
-  if (edges.length === 0) return "  (no edges — wire up your component)";
-  const parts = ["  src → dst"];
-  for (const [from, to] of edges) {
-    parts.push(`  ${from} → ${to}`);
-  }
-  return parts.join("\n");
-}
-
-function renderStateView(comp) {
-  if (!comp?.loop) return "  (no active component)";
-  const state = comp.loop.get();
-  return formatState(state, 2);
-}
-
-function renderEventsView(graph) {
-  if (!graph) return noGraph();
-  const updates = Object.entries(graph.nodes || {}).filter(
-    ([_, n]) => n.type === "update",
-  );
-  if (updates.length === 0) return "  (no event handlers)";
-  const parts = ["  Available events (send via click/input or loop.send):"];
-  for (const [name] of updates) {
-    parts.push(`  • ${name}`);
-  }
-  return parts.join("\n");
-}
-
-function renderComponentsView(tabList) {
-  if (!tabList || tabList.length === 0) return "  (no components registered)";
-  const parts = [];
-  for (const t of tabList) {
-    const comp = t.comp;
-    const graph = comp?.describe?.();
-    const nodeCount = graph ? Object.keys(graph.nodes || {}).length : 0;
-    const edgeCount = graph ? (graph.edges || []).length : 0;
-    const state = comp?.loop?.get?.();
-    const stateKeys = state ? Object.keys(state).length : 0;
-    const mounted = comp?.loop ? "✓" : "✗";
-    const active = comp?.describe ? graph?.name || t.id : t.id;
-    parts.push(
-      `  ${mounted} ${t.label.padEnd(14)} nodes:${String(nodeCount).padStart(2)}  edges:${String(edgeCount).padStart(2)}  state:${String(stateKeys).padStart(2)}  name:${active}`,
-    );
-  }
-  return parts.join("\n");
-}
-
-function renderSignalsView(graph) {
-  if (!graph) return noGraph();
-  const dataNodes = Object.entries(graph.nodes || {}).filter(
-    ([_, n]) => n.type === "data",
-  );
-  const viewNodes = Object.entries(graph.nodes || {}).filter(
-    ([_, n]) => n.type === "view",
-  );
-  const effectNodes = Object.entries(graph.nodes || {}).filter(
-    ([_, n]) => n.type === "effect",
-  );
-  const parts = [];
-  parts.push(
-    `  Data signals: ${dataNodes.map(([n]) => n).join(", ") || "none"}`,
-  );
-  parts.push(
-    `  View signals: ${viewNodes.map(([n]) => n).join(", ") || "none"}`,
-  );
-  parts.push(
-    `  Effect signals: ${effectNodes.map(([n]) => n).join(", ") || "none"}`,
-  );
-  return parts.join("\n");
-}
-
-function renderMetaView(graph) {
-  if (!graph) return noGraph();
-  return [
-    `  kind: ${graph.kind}`,
-    `  name: ${graph.name}`,
-    `  nodeCount: ${Object.keys(graph.nodes || {}).length}`,
-    `  edgeCount: ${(graph.edges || []).length}`,
-  ].join("\n");
-}
-
-function noGraph() {
-  return "  (no graph data — select a demo component)";
-}
-
-function padRight(s, n) {
-  return s + " ".repeat(Math.max(0, n - s.length));
-}
-
-function formatState(obj, indent = 0) {
-  const pad = "  ".repeat(indent);
-  if (obj === null) return pad + "null";
-  if (obj === undefined) return pad + "undefined";
-  if (typeof obj !== "object") return pad + String(obj);
-  if (Array.isArray(obj)) {
-    if (obj.length === 0) return pad + "[]";
-    const items = obj.map((item) => formatState(item, indent + 1));
-    if (items.every((i) => !i.includes("\n")))
-      return pad + "[" + obj.map(String).join(", ") + "]";
-    return pad + "[\n" + items.join(",\n") + "\n" + pad + "]";
-  }
-  const keys = Object.keys(obj);
-  if (keys.length === 0) return pad + "{}";
-  const lines = keys.map((k) => {
-    const v = formatState(obj[k], indent + 1);
-    if (v.includes("\n")) return pad + "  " + k + ": " + v.trimStart();
-    return pad + "  " + k + ": " + v;
-  });
-  return "{\n" + lines.join("\n") + "\n" + pad + "}";
-}
 
 // ─── Mount ────────────────────────────────────────────────────
 const root = document.getElementById("app");
@@ -396,6 +242,26 @@ if (root) {
       DemoApp.loop.send("switch", h);
     }
   });
+
+  // Auto-refresh: re-render debug panel every 500ms when enabled
+  let autoRefreshTimer = null;
+
+  function manageAutoRefresh() {
+    const { debugTab, autoRefresh } = DemoApp.loop.get();
+    if (autoRefresh && debugTab) {
+      if (!autoRefreshTimer) {
+        autoRefreshTimer = setInterval(() => DemoApp.loop.send("refresh"), 500);
+      }
+    } else {
+      if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+      }
+    }
+  }
+
+  manageAutoRefresh();
+  DemoApp.loop.subscribe(() => manageAutoRefresh());
 
   requestAnimationFrame(() => {
     const mountMap = {};

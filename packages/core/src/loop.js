@@ -330,17 +330,24 @@ export function createLoop(config = {}) {
 
       // If handler is an object (with metadata), delegate to _executeHandler
       if (meta) {
+        const stateBefore = stateSignal.get()
         batch(() => {
-          const currentState = stateSignal.get()
-          _executeHandler(event, currentState, envelope.payload, envelope)
+          _executeHandler(event, stateBefore, envelope.payload, envelope)
         }, {
           notify: () => {
-            notify()
-            runEffects()
+            // For sync handlers, state would already be set in _executeHandler.
+            // For async handlers, state is set in the .then() callback outside batch.
+            // Only notify if state actually changed.
+            const stateAfter = stateSignal.get()
+            if (stateAfter !== stateBefore) {
+              notify()
+              runEffects()
+            }
           }
         })
       } else {
         // Plain function handler — original behavior
+        let _stateDidChange = false
         batch(() => {
           const currentState = stateSignal.get()
           let result
@@ -352,11 +359,14 @@ export function createLoop(config = {}) {
           if (result !== undefined && result !== currentState) {
             const nextState = { ...currentState, ...result }
             stateSignal.set(nextState)
+            _stateDidChange = true
           }
         }, {
           notify: () => {
-            notify()
-            runEffects()
+            if (_stateDidChange) {
+              notify()
+              runEffects()
+            }
           }
         })
       }
