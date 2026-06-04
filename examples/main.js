@@ -225,23 +225,24 @@ const DemoApp = component("DemoApp", {
         ${state.tab === "landing"
           ? Landing({ send })
           : html`
-              <div
-                style="display:flex;align-items:center;gap:0.35rem;justify-content:center;margin-bottom:0.25rem;flex-wrap:wrap;"
-              >
-                ${tabs.map(
-                  (t) => html`
-                    <button
-                      @click=${() => send("switch", t.id)}
-                      style="padding:0.4rem 0.75rem;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:500;
-                       background:${state.tab === t.id ? "#646cff" : "#e8e8ed"};
-                       color:${state.tab === t.id ? "white" : "#333"};
-                       transition:all 0.15s;"
-                    >
-                      ${t.label}
-                    </button>
-                  `,
-                )}
-              </div>
+              ${[
+                { id: "counter", label: "Counter" },
+                { id: "todo", label: "Todos" },
+                { id: "router", label: "Router" },
+                { id: "cars", label: "Cars" },
+              ].map(
+                (t) => html`
+                  <button
+                    @click=${() => send("switch", t.id)}
+                    style="padding:0.4rem 0.75rem;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:500;
+                     background:${state.tab === t.id ? "#646cff" : "#e8e8ed"};
+                     color:${state.tab === t.id ? "white" : "#333"};
+                     transition:all 0.15s;"
+                  >
+                    ${t.label}
+                  </button>
+                `,
+              )}
 
               <div
                 id="demo-slot"
