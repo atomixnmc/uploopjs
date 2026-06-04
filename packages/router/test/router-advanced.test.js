@@ -1,29 +1,56 @@
 import { describe, it, expect } from 'vitest'
 import { createRouter } from '../src/index.js'
 
-describe('createRouter advanced features', () => {
+describe('createRouter', () => {
+  it('matches exact routes', () => {
+    const router = createRouter({
+      '': { view: () => 'Home' },
+      'about': { view: () => 'About' }
+    })
+    router.navigate('about')
+    expect(router.get().path).toBe('about')
+    expect(router.match().view()).toBe('About')
+  })
+
+  it('returns 404 for unmatched routes', () => {
+    const router = createRouter({ '': { view: () => 'Home' } })
+    router.navigate('nonexistent')
+    expect(router.match().view()).toBe('<h2>404 Not Found</h2>')
+  })
+
+  it('custom wildcard route', () => {
+    const router = createRouter({ '*': { view: () => 'Custom 404' } })
+    router.navigate('anything')
+    expect(router.match().view()).toBe('Custom 404')
+  })
+
   it('resolves parametric routes', () => {
     const router = createRouter({
-      'users/:id': { view: (s) => `User ${s.params.id}` },
-      '': { view: () => 'Home' }
-    }, { useHash: false })
-
+      'users/:id': { view: (s) => `User ${s.params.id}` }
+    })
     router.navigate('users/42')
-    const state = router.get()
-    expect(state.path).toBe('users/42')
-    expect(state.params).toEqual({ id: '42' })
+    expect(router.get().params).toEqual({ id: '42' })
+  })
+
+  it('extracts multiple params', () => {
+    const router = createRouter({
+      'posts/:postId/comments/:commentId': { view: () => '' }
+    })
+    router.navigate('posts/10/comments/20')
+    expect(router.get().params).toEqual({ postId: '10', commentId: '20' })
+  })
+
+  it('params() helper works', () => {
+    const router = createRouter({ 'items/:id': { view: () => '' } })
+    router.navigate('items/5')
+    expect(router.params()).toEqual({ id: '5' })
   })
 
   it('guards block navigation', () => {
     let blocked = false
     const router = createRouter({
-      'admin': {
-        view: () => 'Admin',
-        guard: () => { blocked = true; return false }
-      },
-      '': { view: () => 'Home' }
-    }, { useHash: false })
-
+      'admin': { view: () => 'Admin', guard: () => { blocked = true; return false } }
+    })
     router.navigate('admin')
     expect(router.get().path).not.toBe('admin')
     expect(blocked).toBe(true)
@@ -31,90 +58,74 @@ describe('createRouter advanced features', () => {
 
   it('guards allow valid navigation', () => {
     const router = createRouter({
-      'admin': { view: () => 'Admin', guard: () => true },
-      '': { view: () => 'Home' }
-    }, { useHash: false })
-
+      'admin': { view: () => 'Admin', guard: () => true }
+    })
     router.navigate('admin')
     expect(router.get().path).toBe('admin')
   })
 
-  it('canNavigate checks guards without navigating', () => {
+  it('canNavigate checks guards', () => {
     const router = createRouter({
       'admin': { view: () => 'Admin', guard: () => false },
       'public': { view: () => 'Public' }
-    }, { useHash: false })
-
+    })
     expect(router.canNavigate('admin')).toBe(false)
     expect(router.canNavigate('public')).toBe(true)
   })
 
-  it('addRoute registers routes at runtime', () => {
-    const router = createRouter({ '': { view: () => 'Home' } })
+  it('onNavigate global guard fires', () => {
+    const calls = []
+    const router = createRouter({ 'about': { view: () => 'About' } }, {
+      onNavigate: (state, path, resolved) => { calls.push([state.path, path]) }
+    })
+    router.navigate('about')
+    expect(calls.length).toBe(1)
+  })
+
+  it('addRoute registers at runtime', () => {
+    const router = createRouter({})
     router.addRoute('about', { view: () => 'About' })
     router.navigate('about')
     expect(router.get().path).toBe('about')
   })
 
-  it('getLayouts returns matching layout chain', () => {
+  it('getLayouts returns matching layouts', () => {
     const router = createRouter({
-      'admin': {
-        view: () => 'Admin',
-        layout: (s, content) => `[Admin]${content}[/Admin]`
-      },
-      'admin/users': {
-        view: () => 'Users',
-        layout: (s, content) => `[Sub]${content}[/Sub]`
-      }
+      'admin': { view: () => '', layout: (s, c) => `[L]${c}[/L]` },
+      'admin/users': { view: () => 'Users' }
     })
-
-    router.navigate('admin')
+    router.navigate('admin/users')
     const layouts = router.getLayouts()
     expect(layouts.length).toBe(1)
     expect(layouts[0].path).toBe('admin')
   })
 
-  it('onNavigate hook fires on navigation', () => {
-    const calls = []
+  it('render applies layouts', () => {
     const router = createRouter({
-      '': { view: () => 'Home' },
-      'about': { view: () => 'About' }
-    }, {
-      onNavigate: (from, to) => calls.push([from, to])
+      'admin': { view: () => 'Content', layout: (s, c) => `[Admin]${c}[/Admin]` }
     })
-
-    router.navigate('about')
-    expect(calls.length).toBe(1)
-    expect(calls[0][1]).toBe('about')
+    router.navigate('admin')
+    expect(router.render()).toBe('[Admin]Content[/Admin]')
   })
 
-  it('wildcard route matches unknown paths', () => {
-    const router = createRouter({
-      '': { view: () => 'Home' },
-      '*': { view: () => '404' }
-    })
-
-    router.navigate('nonexistent')
-    const route = router.match()
-    expect(route.view()).toBe('404')
-  })
-
-  it('params extracted for multiple segments', () => {
-    const router = createRouter({
-      'posts/:postId/comments/:commentId': {
-        view: (s) => `Post ${s.params.postId} comment ${s.params.commentId}`
-      }
-    })
-
-    router.navigate('posts/10/comments/20')
-    expect(router.get().params).toEqual({ postId: '10', commentId: '20' })
-  })
-
-  it('loading and error state setters work', () => {
-    const router = createRouter({ '': { view: () => 'Home' } })
+  it('loading and error getters work', () => {
+    const router = createRouter({ '': { view: () => '' } })
     router.send('_setLoading', true)
     expect(router.loading).toBe(true)
-    router.send('_setError', 'Test error')
-    expect(router.error).toBe('Test error')
+    router.send('_setError', 'fail')
+    expect(router.error).toBe('fail')
+  })
+
+  it('normalizes paths with leading slash', () => {
+    const router = createRouter({ 'about': { view: () => 'About' } })
+    router.navigate('/about')
+    expect(router.get().path).toBe('about')
+  })
+
+  it('getRoutes returns route map', () => {
+    const router = createRouter({ 'a': { view: () => '' }, 'b': { view: () => '' } })
+    const routes = router.getRoutes()
+    expect(Object.keys(routes)).toContain('a')
+    expect(Object.keys(routes)).toContain('b')
   })
 })
