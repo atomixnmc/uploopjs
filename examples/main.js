@@ -72,10 +72,11 @@ const tabGroups = [
 
 const tabs = tabGroups.flatMap((g) => g.tabs);
 
-// Read initial tab from URL hash, default to landing
-function getTabFromHash() {
-  const h = window.location.hash.replace(/^#/, "");
-  return tabs.find((t) => t.id === h) ? h : "landing";
+// Read initial tab from URL query param (?tab=xxx), default to landing
+function getTabFromQuery() {
+  const p = new URLSearchParams(window.location.search);
+  const t = p.get("tab") || "";
+  return tabs.find((tab) => tab.id === t) ? t : "landing";
 }
 
 // ── Landing/Hero section (plain function, receives DemoApp's send) ──
@@ -182,11 +183,13 @@ function Landing({ send }) {
 // ── Main demo app ───────────────────────────────────────────
 
 const DemoApp = component("DemoApp", {
-  state: { tab: getTabFromHash() },
+  state: { tab: getTabFromQuery() },
 
   update: {
     switch: (s, tab) => {
-      window.location.hash = tab;
+      const url = new URL(window.location);
+      url.searchParams.set("tab", tab);
+      window.history.pushState({}, "", url);
       return { ...s, tab };
     },
   },
@@ -291,11 +294,12 @@ if (root) {
     }
   });
 
-  // Sync browser back/forward with tab state
-  window.addEventListener("hashchange", () => {
-    const h = window.location.hash.replace(/^#/, "");
-    if (tabs.find((t) => t.id === h) && DemoApp.loop.get().tab !== h) {
-      DemoApp.loop.send("switch", h);
+  // Sync browser back/forward with tab state (query param based)
+  window.addEventListener("popstate", () => {
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get("tab") || "";
+    if (tabs.find((tab) => tab.id === t) && DemoApp.loop.get().tab !== t) {
+      DemoApp.loop.send("switch", t);
     }
   });
 

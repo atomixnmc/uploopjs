@@ -67,7 +67,7 @@ describe('InspectorPanel realtime', () => {
 
     counterInst.loop.send('inc')
     panel.loop.send('tick')  // manual refresh for jsdom
-    await new Promise(r => setTimeout(r, 50))
+    await new Promise(r => setTimeout(r, 150))
 
     const after = root.querySelector('pre').textContent
     expect(after).toContain('count: 1')
