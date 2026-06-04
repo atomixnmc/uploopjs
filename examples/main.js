@@ -78,10 +78,10 @@ function getTabFromHash() {
   return tabs.find((t) => t.id === h) ? h : "landing";
 }
 
-// ── Landing/Hero section ────────────────────────────────────
+// ── Landing/Hero section (plain function, receives DemoApp's send) ──
 
-const Landing = component("Landing", {
-  view: (s, { send }) => html`
+function Landing({ send }) {
+  return html`
     <div style="text-align:center;padding:3rem 1rem 2rem;">
       <div style="font-size:4rem;margin-bottom:0.5rem;">⚡</div>
       <h1 style="font-size:2.5rem;margin:0 0 0.5rem;font-weight:800;">
@@ -176,8 +176,8 @@ const Landing = component("Landing", {
         181 tests
       </p>
     </div>
-  `,
-});
+  `;
+}
 
 // ── Main demo app ───────────────────────────────────────────
 
@@ -211,7 +211,7 @@ const DemoApp = component("DemoApp", {
         </div>
 
         ${state.tab === "landing"
-          ? Landing()
+          ? Landing({ send })
           : html`
               ${tabGroups.map(
                 (group) => html`
