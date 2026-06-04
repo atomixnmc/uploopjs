@@ -330,11 +330,13 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         if (result && typeof result === 'object') {
           htmlStr = result.toString?.() ?? String(result)
           snapshot._bindings = result.bindings || []
+          snapshot._send = instanceLoop.send
+          snapshot._get = instanceLoop.get
         } else {
           htmlStr = String(result)
         }
 
-        exec.replace?.(el, htmlStr) ?? (el.innerHTML = htmlStr)
+        if (exec.replace) exec.replace(el, htmlStr); else el.innerHTML = htmlStr
 
         if (exec.hooks?.postReplace) {
           exec.hooks.postReplace(el, snapshot)

@@ -286,7 +286,8 @@ export function processUploopAttributes(root, ctx) {
         save: () => ({
           idx: el.parentNode ? Array.from(el.parentNode.children).indexOf(el) : -1,
           containerId: el.parentElement?.id || '',
-          tag: el.tagName.toLowerCase()
+          tag: el.tagName.toLowerCase(),
+          id: el.id || ''
         }),
         restore: (data, mountRoot) => {
           // Find the target container in current DOM (survives innerHTML)
@@ -294,16 +295,13 @@ export function processUploopAttributes(root, ctx) {
             ? mountRoot.querySelector('#' + data.containerId)
             : mountRoot
           if (!container) return
-          // Remove any duplicate canvas from the new innerHTML render
-          const dup = container.querySelector(data.tag + '[data-up-provide]')
-          if (dup && dup !== el) dup.remove()
-          // Re-insert the original element
-          if (!container.contains(el)) {
-            if (data.idx >= 0 && data.idx < container.children.length) {
-              container.insertBefore(el, container.children[data.idx])
-            } else {
-              container.appendChild(el)
-            }
+          // Remove duplicate by replacing it with the preserved element
+          let dup = container.querySelector(data.tag + '[data-up-provide]')
+          if (!dup && data.id) dup = mountRoot.querySelector('#' + data.id)
+          if (dup && dup !== el && dup.parentNode) {
+            dup.parentNode.replaceChild(el, dup)
+          } else if (!container.contains(el)) {
+            container.appendChild(el)
           }
         }
       })

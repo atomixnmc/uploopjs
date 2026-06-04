@@ -4,6 +4,7 @@
   "type": "module",
   "main": "./src/index.js",
   "dependencies": {
-    "@uploop/core": "*"
+    "@uploop/core": "*",
+    "@uploop/html": "*"
   }
 }

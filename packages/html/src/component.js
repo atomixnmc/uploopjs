@@ -46,7 +46,9 @@ function createWiredDOMExecution(loop, resources) {
         }
 
         if (snapshot._bindings && snapshot._bindings.length > 0) {
-          applyBindings(target, snapshot._bindings, loop.send, loop.get())
+          const send = snapshot._send || loop.send
+          const get = snapshot._get || (() => loop.get())
+          applyBindings(target, snapshot._bindings, send, get())
         }
 
         processUploopAttributes(target, ctx)
@@ -123,6 +125,30 @@ export function component(name, config = {}, lifecycleMethods = {}) {
   }
 
   const desc = coreComponent(name, wrappedConfig, lifecycleMethods)
+
+  // Override instance mount to wire resources through wrapper's registry
+  const _origCreate = desc.create
+  desc.create = function(props, ...children) {
+    const inst = _origCreate.call(this, props, ...children)
+    if (inst && inst.mount) {
+      const _origMount = inst.mount
+      inst.mount = function(el) {
+        // Call mount hook FIRST so user resource registrations take priority
+        // over auto-registration from processUploopAttributes
+        if (config.mount) {
+          config.mount(el, {
+            send: inst.loop.send,
+            get: inst.loop.get,
+            registerResource: (name, handlers) => resources.register(name, handlers)
+          })
+        }
+        const result = _origMount.call(this, el)
+        return result
+      }
+    }
+    return inst
+  }
+
   desc._originalView = origView
   desc._html = componentTag(config.classes || {})
   return desc

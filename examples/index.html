@@ -27,10 +27,54 @@
             #app {
                 min-height: 100vh;
             }
+            /* Inspector toggle */
+            #inspector-toggle {
+                position: fixed;
+                bottom: 16px;
+                left: 16px;
+                z-index: 9999;
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                border: none;
+                background: #1e1e2e;
+                color: #646cff;
+                font-size: 1.2rem;
+                cursor: pointer;
+                box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: transform 0.15s;
+            }
+            #inspector-toggle:hover {
+                transform: scale(1.1);
+            }
+            /* Inspector panel */
+            #inspector-panel {
+                position: fixed;
+                bottom: 72px;
+                left: 16px;
+                z-index: 9998;
+                width: 560px;
+                max-height: 75vh;
+                background: #1e1e2e;
+                color: #cdd6f4;
+                border-radius: 12px;
+                box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+                font-family: "Cascadia Code", "Fira Code", monospace;
+                font-size: 0.72rem;
+                display: none;
+            }
+            #inspector-panel.open {
+                display: block;
+            }
         </style>
     </head>
     <body>
         <div id="app"></div>
+        <button id="inspector-toggle" title="HyperGraph Inspector">⚡</button>
+        <div id="inspector-panel"></div>
         <script type="module" src="./main.js"></script>
     </body>
 </html>

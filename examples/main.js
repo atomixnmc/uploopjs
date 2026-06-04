@@ -1,6 +1,10 @@
 import { html, component } from "@uploop/html";
 import { inject } from "@uploop/css";
-import { DEBUG_TABS, renderDebugContent } from "@uploop/devutils";
+import {
+  InspectorPanel,
+  startEventCapture,
+  bindInspectorSend,
+} from "@uploop/devutils";
 import { Counter } from "./counter/main.js";
 import { CSSDemo } from "./css-demo/main.js";
 import { Todo } from "./todo/main.js";
@@ -60,21 +64,16 @@ function getTabFromHash() {
 }
 
 const DemoApp = component("DemoApp", {
-  state: { tab: getTabFromHash(), debugTab: "", autoRefresh: true },
+  state: { tab: getTabFromHash() },
 
   update: {
     switch: (s, tab) => {
       window.location.hash = tab;
       return { ...s, tab };
     },
-    debugSwitch: (s, debugTab) => ({ ...s, debugTab }),
-    toggleAutoRefresh: (s) => ({ ...s, autoRefresh: !s.autoRefresh }),
-    refresh: (s) => s,
   },
 
   view: (state, { send }) => {
-    const activeComp = tabs.find((t) => t.id === state.tab)?.comp;
-
     return html`
       <div
         style="font-family:sans-serif;max-width:860px;margin:0 auto;padding:1.5rem 2rem 2rem;"
@@ -120,77 +119,6 @@ const DemoApp = component("DemoApp", {
           style="border:1px solid var(--color-border,#e0e0e0);border-radius:12px;background:var(--color-bg,white);box-shadow:0 2px 8px rgba(0,0,0,0.04);min-height:180px;"
         ></div>
 
-        <!-- ========== HyperGraph Debug Panel ========== -->
-        <details style="margin-top:1.25rem;" ${state.debugTab ? "open" : ""}>
-          <summary
-            style="cursor:pointer;font-size:0.88rem;color:#555;font-weight:600;user-select:none;
-                         padding:0.4rem 0.6rem;border-radius:6px;background:#f0f0f4;display:flex;align-items:center;gap:0.5rem;"
-          >
-            <span>⚡ HyperGraph Inspector</span>
-            <label
-              style="font-size:0.7rem;font-weight:400;color:#888;display:inline-flex;align-items:center;gap:0.2rem;cursor:pointer;"
-              @click=${(e) => e.stopPropagation()}
-            >
-              <input
-                type="checkbox"
-                ?checked=${state.autoRefresh}
-                @click=${(e) => {
-                  e.stopPropagation();
-                  send("toggleAutoRefresh");
-                }}
-                style="cursor:pointer;margin:0;"
-              />
-              auto-refresh
-            </label>
-            ${
-              !state.autoRefresh
-                ? html`
-                    <button
-                      @click=${(e) => {
-                        e.stopPropagation();
-                        send("refresh");
-                      }}
-                      style="font-size:0.7rem;padding:0.15rem 0.45rem;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:white;"
-                    >
-                      🔄 Refresh
-                    </button>
-                  `
-                : ""
-            }
-          </summary>
-
-          <!-- Debug tabs -->
-          <div style="display:flex;gap:2px;margin-top:0.5rem;">
-            ${DEBUG_TABS.map(
-              (dt) => html`
-                <button
-                  @click=${() => send("debugSwitch", dt.id)}
-                  style="flex:1;padding:0.3rem 0.2rem;border:none;cursor:pointer;font-size:0.72rem;
-                       border-radius:4px 4px 0 0;
-                       background:${state.debugTab === dt.id
-                    ? "#646cff"
-                    : "#e8e8ed"};
-                       color:${state.debugTab === dt.id ? "white" : "#555"};
-                       font-weight:${state.debugTab === dt.id ? "600" : "400"};"
-                >
-                  ${dt.label}
-                </button>
-              `,
-            )}
-          </div>
-
-          <!-- Debug content -->
-          <pre
-            id="debug-panel-pre"
-            style="background:#1e1e2e;color:#cdd6f4;padding:0.8rem 1rem;border-radius:0 0 8px 8px;
-                      overflow:auto;font-size:0.72rem;line-height:1.5;max-height:340px;margin:0;
-                      font-family:'Cascadia Code','Fira Code','JetBrains Mono',monospace;
-                      white-space:pre-wrap;word-break:break-all;"
-          >
-${renderDebugContent(state.debugTab, activeComp, tabs)}
-          >
-        </details>
-
         <p
           style="text-align:center;margin-top:1.2rem;font-size:0.75rem;color:#aaa;"
         >
@@ -199,41 +127,39 @@ ${renderDebugContent(state.debugTab, activeComp, tabs)}
       </div>
     `;
   },
-
-  mount: (el, ctx) => {
-    // Preserve scroll position of debug panel across renders
-    let _scrollTop = 0;
-    const unsub = DemoApp.loop.subscribe(() => {
-      // Wait for DOM to update (innerHTML is synchronous)
-      queueMicrotask(() => {
-        const pre = el.querySelector("#debug-panel-pre");
-        if (pre) {
-          pre.scrollTop = _scrollTop;
-        }
-      });
-    });
-    // Track scroll position from scroll events
-    el.addEventListener(
-      "scroll",
-      (e) => {
-        const pre = e.target.closest?.("#debug-panel-pre");
-        if (pre) _scrollTop = pre.scrollTop;
-      },
-      true,
-    ); // use capture to catch scroll on child elements
-    ctx.registerResource("debug-scroll", {
-      save: () => _scrollTop,
-      restore: (val) => {
-        _scrollTop = val;
-      },
-    });
-  },
 });
 
 // ─── Mount ────────────────────────────────────────────────────
 const root = document.getElementById("app");
 if (root) {
   DemoApp.mount(root);
+
+  let _activeInstance = null;
+
+  // HyperGraph Inspector — mounted outside DemoApp's render cycle
+  const inspectorRoot = document.getElementById("inspector-panel");
+  const toggleBtn = document.getElementById("inspector-toggle");
+  const inspector = InspectorPanel.create();
+  inspector.mount(inspectorRoot);
+  bindInspectorSend(inspector.loop.send);
+
+  // Toggle button
+  toggleBtn.addEventListener("click", () => {
+    inspectorRoot.classList.toggle("open");
+  });
+
+  // Feed component data to inspector on tab changes
+  DemoApp.loop.subscribe(() => {
+    const currentTab = DemoApp.loop.get().tab;
+    const activeComp = _activeInstance;
+    if (activeComp) {
+      inspector.loop.send("setActiveComp", activeComp);
+      inspector.loop.send(
+        "setComponents",
+        tabs.map((t) => ({ id: t.id, label: t.label, comp: t.comp })),
+      );
+    }
+  });
 
   // Sync browser back/forward with tab state
   window.addEventListener("hashchange", () => {
@@ -243,41 +169,32 @@ if (root) {
     }
   });
 
-  // Auto-refresh: re-render debug panel every 500ms when enabled
-  let autoRefreshTimer = null;
-
-  function manageAutoRefresh() {
-    const { debugTab, autoRefresh } = DemoApp.loop.get();
-    if (autoRefresh && debugTab) {
-      if (!autoRefreshTimer) {
-        autoRefreshTimer = setInterval(() => DemoApp.loop.send("refresh"), 500);
-      }
-    } else {
-      if (autoRefreshTimer) {
-        clearInterval(autoRefreshTimer);
-        autoRefreshTimer = null;
-      }
-    }
-  }
-
-  manageAutoRefresh();
-  DemoApp.loop.subscribe(() => manageAutoRefresh());
-
   requestAnimationFrame(() => {
     const mountMap = {};
+    let lastTab = null;
 
     function mountCurrent() {
+      const currentTab = DemoApp.loop.get().tab;
+      if (currentTab === lastTab) return; // skip — tab didn't change
+      lastTab = currentTab;
+
       for (const key of Object.keys(mountMap)) {
         if (mountMap[key]) {
           mountMap[key]();
           mountMap[key] = null;
         }
       }
-      const currentTab = DemoApp.loop.get().tab;
       const activeTab = tabs.find((t) => t.id === currentTab);
       if (!activeTab) return;
       const el = document.getElementById("demo-slot");
-      if (el) mountMap[currentTab] = activeTab.comp.mount(el);
+      if (!el) return;
+
+      mountMap[currentTab] = activeTab.comp.mount(el);
+      _activeInstance = activeTab.comp;
+
+      if (inspector && inspector.loop) {
+        inspector.loop.send("setActiveComp", activeTab.comp);
+      }
     }
 
     mountCurrent();
