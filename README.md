@@ -1,42 +1,35 @@
-# Uploop
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/atomixnmc/uploopjs/main/docs/uploop-dark.svg">
+    <img alt="Uploop" src="https://raw.githubusercontent.com/atomixnmc/uploopjs/main/docs/uploop-light.svg" width="480">
+  </picture>
+</p>
 
-> **The update loop for the web.**
+<p align="center">
+  <strong>The HyperGraph UI Framework — components are inspectable graphs of typed nodes.</strong>
+</p>
 
-Uploop is a universal update-loop architecture for UI, data, events, storage, and side effects. It's not just another component framework — it's a small, standard-like runtime model where UI, data, style, route, motion, and effects are designed as an executable **HyperGraph**.
+<p align="center">
+  <a href="https://github.com/atomixnmc/uploopjs/actions/workflows/gh-pages.yml"><img src="https://github.com/atomixnmc/uploopjs/actions/workflows/gh-pages.yml/badge.svg" alt="Pages"></a>
+  <a href="https://github.com/atomixnmc/uploopjs/actions/workflows/release.yml"><img src="https://github.com/atomixnmc/uploopjs/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="#"><img src="https://img.shields.io/badge/tests-192%20passed-brightgreen" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/bundle-~26KB%20gzip-blue" alt="Size"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
+</p>
 
-## Architecture
+---
 
-```
-@uploop/core     - Pure update protocol (no DOM, no browser)
-@uploop/html     - DOM/WebComponent adapter  
-@uploop/store    - External store, selectors, derived state
-@uploop/css      - Utility CSS engine
-@uploop/router   - Route updater
-@uploop/motion   - Frame/spring animation updater
-```
-
-**Core knows nothing about HTML.** No `HTMLElement`, no `customElements`, no `innerHTML`.
-
-## Quick Start
-
-```bash
-npm install
-npm run dev
-```
-
-## Demo: Counter
+**Uploop** is not another component framework. It's a universal update-loop architecture where UI, data, events, style, routing, and side effects are designed as an executable **HyperGraph** — a collection of typed nodes connected by edges, inspectable at runtime.
 
 ```js
 import { html, component } from '@uploop/html'
 
 const Counter = component('Counter', {
   state: { count: 0 },
-
   update: {
     inc: (s) => ({ count: s.count + 1 }),
     dec: (s) => ({ count: s.count - 1 })
   },
-
   view: (state, { send }) => html`
     <div>
       <h2>Count: ${state.count}</h2>
@@ -45,80 +38,77 @@ const Counter = component('Counter', {
     </div>
   `
 })
-
-// Mount to DOM
 Counter.mount(document.getElementById('root'))
 ```
 
-## Demo: Todos
+## Why Uploop?
+
+|                   | React + Ecosystem     | Uploop             |
+|-------------------|-----------------------|--------------------|
+| Bundle (gzip)     | ~54-65 KB             | **~26 KB**         |
+| Build step        | Required (JSX)        | **None**           |
+| CSP-safe          | No (inline handlers)  | **Yes**            |
+| Architecture      | Component tree        | **HyperGraph**     |
+| Async handling    | Manual boilerplate    | **Declarative metadata** |
+| Inspector         | React DevTools        | **Built-in HyperGraph Inspector** |
+
+- **~26 KB gzip** — ~40% smaller than React + Tailwind + Zustand + Router + XState combined
+- **No build step** — pure ESM, works from CDN or local file
+- **No JSX** — standard tagged template literals
+- **CSP-safe** — `@click` uses `addEventListener`, no inline `onclick`
+- **WebComponent native** — `defineElement()` produces custom elements
+- **7 packages** — core, html, store, router, css, state-machine, devutils — all sharing one update loop
+
+## Packages
+
+| Package | Description | Size |
+|---------|-------------|------|
+| `@uploop/core` | Update loop, signals, frames, graph engine, async metadata | 62 KB |
+| `@uploop/html` | DOM adapter, template tag, WebComponent, suspend helper | 37 KB |
+| `@uploop/store` | External store, selectors, derived values, persistence | 6 KB |
+| `@uploop/router` | Route matching, guards, layouts, lazy loading | 9 KB |
+| `@uploop/css` | Utility CSS engine, theme tokens, variants, animations | 53 KB |
+| `@uploop/state-machine` | Finite state machine, entry/exit hooks, guards | 4 KB |
+| `@uploop/devutils` | HyperGraph Inspector, event capture, debug panel | — |
+
+## Async Metadata — Zero Boilerplate
+
+Declare async behavior as metadata on your handlers:
 
 ```js
-import { html, component } from '@uploop/html'
-
-const Todo = component('Todo', {
-  state: { text: '', todos: [], filter: 'all' },
-
+const search = createLoop({
+  state: { query: '', results: [] },
+  cache:  { results: { ttl: 10000, swr: true } },
+  error:  { search: { retry: 3, fallback: { results: [] } } },
   update: {
-    input: (s, text) => ({ ...s, text }),
-    add: (s) => s.text.trim()
-      ? { text: '', todos: [...s.todos, { id: Date.now(), text: s.text, done: false }] }
-      : s,
-    toggle: (s, id) => ({ 
-      todos: s.todos.map(t => t.id === id ? { ...t, done: !t.done } : t) 
-    })
-  },
-
-  view: (state, { send }) => html`
-    <div>
-      <input .value=${state.text} @input=${['input', e => e.target.value]}>
-      <button @click=${() => send('add')}>Add</button>
-      <ul>
-        ${state.todos.filter(t => !t.done).map(todo => html`
-          <li @click=${() => send('toggle', todo.id)}>
-            ${todo.text}
-          </li>
-        `)}
-      </ul>
-    </div>
-  `
+    search: {
+      debounce: 300,           // ← auto-debounced
+      interruptible: true,     // ← auto AbortController
+      run: async (s, query, { signal }) => {
+        const res = await fetch(`/api?q=${query}`, { signal })
+        return { results: await res.json() }
+      }
+    }
+  }
 })
 ```
 
-## Core Concepts
+No manual `setTimeout`, `clearTimeout`, `AbortController`, loading flags, or error state — the framework handles it all.
 
-### Everything is an Updater
-An updater is not just a component. It can represent: UI component, request handler, animation frame, cache policy, database sync, signal, event stream, WebSocket channel.
+## Quick Start
 
-### One-Way by Default, Two-Way by Protocol
-```
-Input → Update → Frame → Output
-```
-
-### Store is a Bus, Not Global State
-Data types: `hot`, `cold`, `transient`, `stable`, `remote`, `derived`
-
-### Frame is First-Class
-```
-micro-frame     - Instant UI patch
-visual-frame    - requestAnimationFrame
-network-frame   - Request/response cycle
+```bash
+git clone https://github.com/atomixnmc/uploopjs.git
+cd uploopjs
+npm install
+npm run dev
 ```
 
-### HyperGraph Model
-Every component exports its design graph. This gives you: devtools, AI generation, visual editor, debugging, optimization.
+Open `http://localhost:3000` — you'll see the demo gallery with 19 examples.
 
-## Why Uploop?
-
-- **6KB gzip** core
-- **No build step** — pure ESM, works from any CDN
-- **No JSX** — standard template literals
-- **CSP-safe** — no inline `onclick` handlers
-- **WebComponent** native
-- **HyperGraph** architecture — inspectable, optimizable, AI-friendly
-
-## Roadmap
-
-See [docs/PLAN.md](./docs/PLAN.md) and [docs/TODO.md](./docs/TODO.md).
+📖 **Developer guide:** [HOWTO.md](./docs/HOWTO.md)
+📋 **Examples catalog:** [EXAMPLES.md](./docs/EXAMPLES.md)
+🗺 **Roadmap:** [PLAN.md](./docs/PLAN.md) | [TODO.md](./docs/TODO.md)
 
 ## License
 

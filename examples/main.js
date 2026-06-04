@@ -189,6 +189,7 @@ const DemoApp = component("DemoApp", {
     switch: (s, tab) => {
       const url = new URL(window.location);
       url.searchParams.set("tab", tab);
+      url.hash = ""; // clear any hash left by router examples
       window.history.pushState({}, "", url);
       return { ...s, tab };
     },
