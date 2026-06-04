@@ -72,11 +72,15 @@ const tabGroups = [
 
 const tabs = tabGroups.flatMap((g) => g.tabs);
 
-// Read initial tab from URL query param (?tab=xxx), default to landing
+// Read initial tab from URL (?tab=xxx), default to landing
 function getTabFromQuery() {
-  const p = new URLSearchParams(window.location.search);
-  const t = p.get("tab") || "";
-  return tabs.find((tab) => tab.id === t) ? t : "landing";
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get("tab") || "";
+    return tabs.find((tab) => tab.id === t) ? t : "landing";
+  } catch {
+    return "landing";
+  }
 }
 
 // ── Landing/Hero section (plain function, receives DemoApp's send) ──
@@ -187,14 +191,13 @@ const DemoApp = component("DemoApp", {
 
   update: {
     switch: (s, tab) => {
-      // Update URL as side effect (replace, not push — avoids history bloat)
       try {
         const url = new URL(window.location);
         url.searchParams.set("tab", tab);
         url.hash = "";
         window.history.replaceState({}, "", url);
       } catch {
-        /* ignore URL errors */
+        /* non-critical */
       }
       return { ...s, tab };
     },
@@ -222,33 +225,23 @@ const DemoApp = component("DemoApp", {
         ${state.tab === "landing"
           ? Landing({ send })
           : html`
-              ${tabGroups.map(
-                (group) => html`
-                  <div
-                    style="display:flex;align-items:center;gap:0.35rem;justify-content:center;margin-bottom:0.25rem;flex-wrap:wrap;"
-                  >
-                    <span
-                      style="font-size:0.65rem;color:#aaa;font-weight:600;min-width:42px;text-align:right;text-transform:uppercase;letter-spacing:0.5px;"
-                      >${group.name}</span
+              <div
+                style="display:flex;align-items:center;gap:0.35rem;justify-content:center;margin-bottom:0.25rem;flex-wrap:wrap;"
+              >
+                ${tabs.map(
+                  (t) => html`
+                    <button
+                      @click=${() => send("switch", t.id)}
+                      style="padding:0.4rem 0.75rem;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:500;
+                       background:${state.tab === t.id ? "#646cff" : "#e8e8ed"};
+                       color:${state.tab === t.id ? "white" : "#333"};
+                       transition:all 0.15s;"
                     >
-                    ${group.tabs.map(
-                      (t) => html`
-                        <button
-                          @click=${() => send("switch", t.id)}
-                          style="padding:0.4rem 0.75rem;border:none;border-radius:8px;cursor:pointer;font-size:0.82rem;font-weight:500;
-                           background:${state.tab === t.id
-                            ? "#646cff"
-                            : "#e8e8ed"};
-                           color:${state.tab === t.id ? "white" : "#333"};
-                           transition:all 0.15s;"
-                        >
-                          ${t.label}
-                        </button>
-                      `,
-                    )}
-                  </div>
-                `,
-              )}
+                      ${t.label}
+                    </button>
+                  `,
+                )}
+              </div>
 
               <div
                 id="demo-slot"
@@ -331,6 +324,10 @@ if (root) {
       if (!activeTab) return;
       const el = document.getElementById("demo-slot");
       if (!el) return;
+
+      // Clear any stale content before mounting (resource restore may have
+      // left previous example's DOM behind)
+      el.innerHTML = "";
 
       mountMap[currentTab] = activeTab.comp.mount(el);
       _activeInstance = activeTab.comp;

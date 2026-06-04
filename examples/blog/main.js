@@ -317,7 +317,9 @@ const Blog = component("Blog", {
   },
 });
 
-// ─── Router (attached to Blog component) ────────────────────
+// ─── Blog router (internal, hash-based so it doesn't conflict with demo URL) ──
+// NOTE: do NOT auto-navigate at module scope — it sets #/blog on import
+// and interferes with the demo gallery's tab navigation.
 const router = createRouter(
   {
     blog: { view: "list" },
@@ -325,10 +327,7 @@ const router = createRouter(
     "blog/:id/edit": { view: "edit" },
   },
   { useHash: true },
-); // hash-based to avoid conflicting with demo app URL
-
-// Initialize blog path
-Blog.loop.send("navigate", "blog");
+);
 
 export { Blog, router, POSTS };
 export default Blog;
