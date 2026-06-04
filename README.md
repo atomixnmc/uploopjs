@@ -107,7 +107,7 @@ npm run dev
 Open `http://localhost:3000` — you'll see the demo gallery with 19 examples.
 
 📖 **Developer guide:** [HOWTO.md](./docs/HOWTO.md)
-📋 **Examples catalog:** [EXAMPLES.md](./docs/EXAMPLES.md)
+📋 **Examples catalog:** [EXAMPLES.md](./docs/examples.md)
 🗺 **Roadmap:** [PLAN.md](./docs/PLAN.md) | [TODO.md](./docs/TODO.md)
 
 ## License

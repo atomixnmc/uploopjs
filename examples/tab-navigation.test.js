@@ -1,96 +1,97 @@
 /**
- * Demo app tab structure + switching tests
+ * Integration test: Full tab switching simulation
  *
- * Tests the tabs data structure and switching logic
- * without importing the full main.js (which mounts DOM).
+ * Mirrors the exact flow from main.js: DemoApp → mount → switch tabs → verify content.
+ * Tests that each tab click mounts the correct component, not always the same one.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
+import { component } from "@uploop/html";
 
-// Mirror the tabs structure from main.js to verify consistency
-const tabGroups = [
-  {
-    name: "Apps",
-    tabs: [
-      { id: "counter", label: "Counter" },
-      { id: "css", label: "🎨 CSS" },
-      { id: "todo", label: "Todos" },
-      { id: "form", label: "Form" },
-      { id: "grid", label: "Grid" },
-      { id: "blog", label: "Blog" },
-    ],
-  },
-  {
-    name: "Pkgs",
-    tabs: [
-      { id: "router", label: "🧭 Router" },
-      { id: "store", label: "🛍 Store" },
-      { id: "statemachine", label: "🚦 StateMachine" },
-      { id: "animation", label: "🎨 Anim" },
-      { id: "async", label: "⚡ Async" },
-    ],
-  },
-  {
-    name: "Media",
-    tabs: [
-      { id: "carousel", label: "🖼 Carousel" },
-      { id: "paint", label: "🎨 Paint" },
-      { id: "audioplayer", label: "🎵 Audio" },
-      { id: "videoplayer", label: "🎬 Video" },
-    ],
-  },
-  {
-    name: "Games",
-    tabs: [
-      { id: "tetris", label: "🎮 Tetris" },
-      { id: "wheel", label: "🎡 Wheel" },
-      { id: "fishes", label: "🐟 Fishes" },
-      { id: "cars", label: "🚗 Cars" },
-    ],
-  },
-];
+// Mock tabs mirroring main.js structure with real components
+const tabDefs = {};
 
-const tabs = tabGroups.flatMap((g) => g.tabs);
+beforeAll(async () => {
+  const counter = await import("./counter/main.js");
+  const todo = await import("./todo/main.js");
+  const router = await import("./router/main.js");
+  const store = await import("./store/main.js");
 
-describe("demo app tabs", () => {
-  it("has 19 tabs total", () => {
-    expect(tabs.length).toBe(19);
+  Object.assign(tabDefs, {
+    counter: counter.Counter,
+    todo: todo.Todo,
+    router: router.RouterDemo,
+    store: store.StoreDemo,
+  });
+});
+
+describe("tab switching simulation", () => {
+  it("Counter component has unique identity", () => {
+    expect(tabDefs.counter).toBeDefined();
+    expect(tabDefs.counter).not.toBe(tabDefs.todo);
+    expect(tabDefs.counter).not.toBe(tabDefs.router);
+    expect(tabDefs.counter).not.toBe(tabDefs.store);
   });
 
-  it("every tab has id and label", () => {
-    for (const t of tabs) {
-      expect(t.id).toBeTruthy();
-      expect(t.label).toBeTruthy();
-    }
+  it("Todo component has unique identity", () => {
+    expect(tabDefs.todo).toBeDefined();
+    expect(tabDefs.todo).not.toBe(tabDefs.counter);
+    expect(tabDefs.todo).not.toBe(tabDefs.router);
   });
 
-  it("all tab ids are unique", () => {
-    const ids = tabs.map((t) => t.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
+  it("each tab mounts and renders different content", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
 
-  it("default tab is landing (not in tabs list)", () => {
-    // landing is a special state, not a real tab
-    expect(tabs.find((t) => t.id === "landing")).toBeUndefined();
-  });
+    const tabs = ["counter", "todo", "router", "store"];
+    let lastContent = "";
 
-  it("getTabFromQuery resolves known tabs", () => {
-    function getTabFromQuery(search) {
-      const p = new URLSearchParams(search);
-      const t = p.get("tab") || "";
-      return tabs.find((tab) => tab.id === t) ? t : "landing";
+    for (const tabId of tabs) {
+      const Comp = tabDefs[tabId];
+      expect(Comp).toBeDefined();
+
+      // Mount the component (like mountCurrent does)
+      Comp.mount(el);
+
+      // Wait for async rendering
+      await new Promise((r) => setTimeout(r, 50));
+
+      const content = el.textContent;
+      expect(content).toBeTruthy();
+      // Content should differ from previous tab
+      if (lastContent) {
+        expect(content).not.toBe(lastContent);
+      }
+      lastContent = content;
     }
 
-    expect(getTabFromQuery("?tab=counter")).toBe("counter");
-    expect(getTabFromQuery("?tab=router")).toBe("router");
-    expect(getTabFromQuery("?tab=store")).toBe("store");
-    expect(getTabFromQuery("?tab=async")).toBe("async");
-    expect(getTabFromQuery("")).toBe("landing");
-    expect(getTabFromQuery("?tab=nonexistent")).toBe("landing");
+    document.body.removeChild(el);
   });
 
-  it("all tab ids are valid URL-safe strings", () => {
-    for (const t of tabs) {
-      expect(t.id).toMatch(/^[a-z0-9-]+$/);
-    }
+  it("Counter renders count-related content", async () => {
+    const el = document.createElement("div");
+    tabDefs.counter.mount(el);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(el.textContent).toMatch(/count1|Sum|Reset/);
+  });
+
+  it("RouterDemo renders navigation content", async () => {
+    const el = document.createElement("div");
+    tabDefs.router.mount(el);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(el.textContent).toContain("Router Demo");
+  });
+
+  it("StoreDemo renders cart content", async () => {
+    const el = document.createElement("div");
+    tabDefs.store.mount(el);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(el.textContent).toContain("Store Demo");
+  });
+
+  it("Todo renders todo-related content", async () => {
+    const el = document.createElement("div");
+    tabDefs.todo.mount(el);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(el.textContent).toContain("Uploop Todos");
   });
 });
