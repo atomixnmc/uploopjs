@@ -146,6 +146,8 @@ export function createStateMachine(config) {
     value,
     available,
     visualize,
+    reset: () => store.send('reset'),
+    setData: (patch) => store.send('setData', patch),
     getState: store.get,
     get value() { return store.get().value },
     get data() { return store.get().data }

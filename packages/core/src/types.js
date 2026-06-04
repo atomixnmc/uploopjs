@@ -1,7 +1,7 @@
 /**
  * @typedef {Object} LoopConfig
  * @property {Object} [state] - Initial state
- * @property {Object<string, Function>} [update] - Update handlers
+ * @property {Object<string, (Function|{run: Function, debounce: number, interruptible: boolean})>} [update] - Update handlers (plain function or { run, debounce, interruptible })
  * @property {Object<string, Function>} [effect] - Effect handlers
  * @property {string} [name] - Loop name (for debugging)
  * @property {'micro'|'visual'|'idle'|'manual'} [frame] - Frame scheduler mode
@@ -9,6 +9,10 @@
  * @property {number} [maxEventsPerTransaction=0] - Max same-event per txn
  * @property {Function} [onUnknownEvent] - Called for unregistered events
  * @property {Function} [onEventRejected] - Called when an event is rejected
+ * @property {Object<string, {retry: number, fallback?: any}>} [error] - Per-event error config: retry count + optional fallback state
+ * @property {Object<string, any>} [suspend] - Per-event suspend config (marks handler as async/pending)
+ * @property {Object<string, {ttl: number, swr?: boolean, fetch?: string}>} [cache] - Per-key cache config: TTL in ms, SWR mode, optional fetch event
+ * @property {boolean} [dev=false] - Enable dev-mode validation (unused keys, unknown events)
  */
 
 /**
@@ -66,6 +70,15 @@
  * @property {Function} registerEdge - Declare an edge
  * @property {Function} describe - Export HyperGraph manifest
  * @property {Function} dispose - Clean up
+ * @property {Function} isPending - Check if an async handler is in-flight
+ * @property {Function} getError - Get error state for an event handler
+ * @property {Function} clearError - Clear error state for an event handler
+ * @property {Function} getMeta - Get metadata (debounce, interruptible) for a handler
+ * @property {Function} getCached - Get cached value with freshness info
+ * @property {Function} cacheStatus - Check cache freshness for a key
+ * @property {Function} invalidateCache - Force-expire a cache entry
+ * @property {Function} clearCache - Clear all cache entries
+ * @property {Function} validate - Run dev-mode validation, returns { unusedKeys, unknownEvents }
  * @property {Object} events - Event processing stats
  * @property {Object} nodes - Graph node introspection
  * @property {Object} edges - Graph edge introspection

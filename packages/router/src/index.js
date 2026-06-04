@@ -7,21 +7,41 @@ import { createLoop } from '@uploop/core'
  * This means route changes flow through the same frame scheduler
  * as any other state change.
  *
- * @param {Object} routes - Route definitions { path: component }
+ * ─── Features ──────────────────────────────────────────
+ * • Exact + parametric route matching (/users/:id)
+ * • Route guards (before/after navigation)
+ * • Nested layouts (parent routes wrap children)
+ * • Lazy loading (dynamic import)
+ * • Query params + hash
+ * • Browser history (popstate)
+ *
+ * @param {Object} routes - Route definitions { path: component|RouteDef }
  * @param {Object} [options]
  * @param {string} [options.base=''] - Base path
  * @param {boolean} [options.useHash=false] - Use hash-based routing
+ * @param {Function} [options.onNavigate] - Called (from, to) before navigation
+ * @param {Function} [options.onError] - Called (error) on lazy load failure
  * @returns {Object} Router
  */
 export function createRouter(routes = {}, options = {}) {
-  const { base = '', useHash = false } = options
+  const { base = '', useHash = false, onNavigate, onError } = options
 
-  // Normalize routes: path → component map
+  // ─── Normalize route definitions ──────────────────────
+  // RouteDef: { view, guard, layout, lazy, children }
   const routeMap = {}
+  const layoutRoutes = [] // parent routes with children (for nesting)
+
   for (const [path, def] of Object.entries(routes)) {
     const normalized = normalizePath(path)
-    routeMap[normalized] = typeof def === 'function' ? { view: def } : def
+    const routeDef = normalizeRoute(def)
+
+    routeMap[normalized] = routeDef
+    if (routeDef.layout || routeDef.children) {
+      layoutRoutes.push({ path: normalized, def: routeDef })
+    }
   }
+  // Sort by path depth so deeper routes match first
+  layoutRoutes.sort((a, b) => b.path.split('/').length - a.path.split('/').length)
 
   // Default routes
   const notFound = routeMap['*'] || { view: () => '<h2>404 Not Found</h2>' }
@@ -29,18 +49,38 @@ export function createRouter(routes = {}, options = {}) {
 
   const currentPath = getCurrentPath(base, useHash)
 
+  // ─── Lazy loading state ───────────────────────────────
+  const _lazyCache = new Map() // path → resolved component
+  const _loadingPath = new Set() // paths currently loading
+
   const store = createLoop({
     name: 'router',
     state: {
       path: currentPath,
       params: {},
       query: parseQueryString(),
-      hash: (typeof window !== 'undefined') ? (window.location.hash || '') : ''
+      hash: (typeof window !== 'undefined') ? (window.location.hash || '') : '',
+      loading: false,
+      error: null
     },
     update: {
       /** Navigate to a path */
       navigate: (s, path) => {
         const cleanPath = path.replace(/^\/+/, '')
+        const resolved = resolveRoute(cleanPath, routeMap)
+
+        // ── Route guard ─────────────────────────────────
+        if (onNavigate) {
+          const allowed = onNavigate(s.path, cleanPath, resolved)
+          if (allowed === false) return s
+        }
+
+        // ── Per-route guard ─────────────────────────────
+        if (resolved?.guard) {
+          const allowed = resolved.guard(s, cleanPath)
+          if (allowed === false) return s
+        }
+
         if (typeof window !== 'undefined') {
           const fullPath = useHash ? `#${cleanPath}` : `/${base}${cleanPath}`
           window.history.pushState({}, '', fullPath)
@@ -49,20 +89,17 @@ export function createRouter(routes = {}, options = {}) {
           path: cleanPath,
           params: extractParams(cleanPath, routeMap),
           query: (typeof window !== 'undefined') ? parseQueryString() : {},
-          hash: (typeof window !== 'undefined') ? (window.location.hash || '') : ''
+          hash: (typeof window !== 'undefined') ? (window.location.hash || '') : '',
+          loading: false,
+          error: null
         }
       },
-      /** Update search params */
-      setQuery: (s, query) => {
-        if (typeof window !== 'undefined') {
-          const qs = new URLSearchParams(query).toString()
-          const newUrl = useHash
-            ? `#${s.path}${qs ? '?' + qs : ''}`
-            : `${base}${s.path}${qs ? '?' + qs : ''}`
-          window.history.replaceState({}, '', newUrl)
-        }
-        return { ...s, query }
-      }
+
+      /** Set loading state (used by lazy loader) */
+      _setLoading: (s, loading) => ({ ...s, loading }),
+
+      /** Set error state */
+      _setError: (s, error) => ({ ...s, error })
     }
   })
 
@@ -74,23 +111,93 @@ export function createRouter(routes = {}, options = {}) {
   }
 
   /**
-   * Get the matched route component for current path
+   * Get the matched route component for current path.
+   * Handles lazy loading — returns a promise if loading.
    */
   function match() {
     const state = store.get()
     const route = resolveRoute(state.path, routeMap)
-    return route || notFound
+
+    if (!route) return notFound
+
+    // ── Lazy loading ────────────────────────────────────
+    if (route.lazy && !_lazyCache.has(state.path)) {
+      if (!_loadingPath.has(state.path)) {
+        _loadingPath.add(state.path)
+        store.send('_setLoading', true)
+
+        Promise.resolve(route.lazy())
+          .then(mod => {
+            const comp = mod.default || mod
+            _lazyCache.set(state.path, normalizeRoute(comp))
+            _loadingPath.delete(state.path)
+            store.send('_setLoading', false)
+            // Re-render with loaded component
+            store.set(s => ({ ...s }))
+          })
+          .catch(err => {
+            _loadingPath.delete(state.path)
+            store.send('_setLoading', false)
+            store.send('_setError', err.message || 'Failed to load route')
+            if (onError) onError(err)
+          })
+      }
+      return { view: () => '<div>Loading...</div>', loading: true }
+    }
+
+    if (_lazyCache.has(state.path)) {
+      return _lazyCache.get(state.path)
+    }
+
+    return route
   }
 
   /**
-   * Render current view as string
+   * Get the layout chain for current path.
+   * Returns an array of layout route defs from outermost to innermost.
+   */
+  function getLayouts() {
+    const state = store.get()
+    const layouts = []
+
+    for (const { path, def } of layoutRoutes) {
+      if (state.path.startsWith(path) || state.path === path) {
+        if (def.layout) {
+          layouts.push({ path, layout: def.layout })
+        }
+      }
+    }
+    return layouts
+  }
+
+  /**
+   * Render current view as string with layouts applied.
    */
   function render() {
+    const state = store.get()
+
+    if (state.loading) return '<div>Loading...</div>'
+    if (state.error) return `<div style="color:red">Error: ${state.error}</div>`
+
     const route = match()
+    let content = ''
+
     if (typeof route.view === 'function') {
-      return route.view(store.get())
+      content = route.view(state)
+    } else {
+      content = route.view || ''
     }
-    return route.view || ''
+
+    // ── Apply layouts ───────────────────────────────────
+    const layouts = getLayouts()
+    for (let i = layouts.length - 1; i >= 0; i--) {
+      const { layout } = layouts[i]
+      if (typeof layout === 'function') {
+        content = layout(state, content)
+      }
+    }
+
+    return content
   }
 
   /**
@@ -111,10 +218,24 @@ export function createRouter(routes = {}, options = {}) {
   }
 
   /**
-   * Get current query params
+   * Check if a guard allows navigation to a path.
+   * Returns false if guard blocks, true otherwise.
    */
-  function query() {
-    return store.get().query
+  function canNavigate(path) {
+    const current = store.get().path
+    const resolved = resolveRoute(path, routeMap)
+    if (resolved?.guard) {
+      return resolved.guard(store.get(), path) !== false
+    }
+    return true
+  }
+
+  /**
+   * Register a route at runtime.
+   */
+  function addRoute(path, def) {
+    const normalized = normalizePath(path)
+    routeMap[normalized] = normalizeRoute(def)
   }
 
   return {
@@ -124,13 +245,23 @@ export function createRouter(routes = {}, options = {}) {
     link,
     navigate: (path) => store.send('navigate', path),
     params,
-    query,
+    canNavigate,
+    addRoute,
+    getLayouts,
     getCurrentPath: () => store.get().path,
-    getRoutes: () => ({ ...routeMap })
+    getRoutes: () => ({ ...routeMap }),
+    get loading() { return store.get().loading },
+    get error() { return store.get().error }
   }
 }
 
 // ─── Helpers ────────────────────────────────────────────────
+
+function normalizeRoute(def) {
+  if (typeof def === 'function') return { view: def }
+  if (def && typeof def === 'object' && !Array.isArray(def)) return { ...def }
+  return { view: () => String(def) }
+}
 
 function normalizePath(path) {
   return path.replace(/\/+$/, '').replace(/^\/+/, '') || ''
@@ -160,7 +291,7 @@ function parseQueryString() {
     const result = {}
     for (const part of qs.split('&')) {
       const [k, v] = part.split('=')
-      result[decodeURIComponent(k)] = decodeURIComponent(v || '')
+      if (k) result[decodeURIComponent(k)] = decodeURIComponent(v || '')
     }
     return result
   } catch (e) {
@@ -172,19 +303,24 @@ function resolveRoute(path, routeMap) {
   // Exact match
   if (routeMap[path]) return routeMap[path]
 
-  // Parametric match: /products/:id
+  // Parametric match: /users/:id
   for (const [pattern, route] of Object.entries(routeMap)) {
+    if (pattern === '*') continue
     const params = matchPath(pattern, path)
     if (params !== null) {
       return { ...route, params }
     }
   }
 
+  // Wildcard
+  if (routeMap['*']) return routeMap['*']
+
   return null
 }
 
 function extractParams(path, routeMap) {
   for (const pattern of Object.keys(routeMap)) {
+    if (pattern === '*') continue
     const params = matchPath(pattern, path)
     if (params !== null) return params
   }

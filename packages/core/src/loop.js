@@ -59,7 +59,9 @@ export function createLoop(config = {}) {
     maxEventDepth = 100,
     maxEventsPerTransaction = 0,
     error: errorConfig = {},
-    suspend: suspendConfig = {}
+    suspend: suspendConfig = {},
+    cache: cacheConfig = {},
+    dev: devMode = false
   } = config
 
   // Core state
@@ -102,6 +104,25 @@ export function createLoop(config = {}) {
   /** @type {Set<string>} events with in-flight async handlers */
   const _pending = new Set()
 
+  /** @type {Map<string, { value: any, timestamp: number, ttl: number, swr: boolean }>} cache store */
+  const _cache = new Map()
+
+  // Initialize cache config from state keys + config
+  for (const key of Object.keys(initialState)) {
+    if (cacheConfig[key]) {
+      const cc = cacheConfig[key]
+      _cache.set(key, {
+        value: initialState[key],
+        timestamp: Date.now(),
+        ttl: cc.ttl || 0,
+        swr: cc.swr || false
+      })
+    }
+  }
+
+  /** @type {Set<string>} keys currently being re-fetched in background (SWR) */
+  const _swrInFlight = new Set()
+
   // Parse handler metadata from config
   for (const [name, handler] of Object.entries(updateHandlers)) {
     if (typeof handler === 'object' && handler !== null && !Array.isArray(handler)) {
@@ -119,6 +140,61 @@ export function createLoop(config = {}) {
     name: config.name || 'unnamed',
     nodes: { state: { type: 'data', access: 'readwrite' } },
     edges: []
+  }
+
+  // ─── Dev-Mode Validation ────────────────────────────────
+
+  /** @type {Set<string>} events that have been sent at least once */
+  const _sentEvents = new Set()
+
+  /** @type {Set<string>} state keys that have been read via get() */
+  const _readKeys = new Set()
+
+  /** @type {Set<string>} state keys that have been written via set/send */
+  const _writtenKeys = new Set()
+
+  function _devWarn(msg) {
+    if (devMode) console.warn(`[Uploop:dev] ${msg}`)
+  }
+
+  function _devValidate() {
+    if (!devMode) return
+
+    // Warn: state keys defined but never read
+    for (const key of Object.keys(initialState)) {
+      if (!_readKeys.has(key) && !_writtenKeys.has(key)) {
+        _devWarn(`State key "${key}" is defined but never read or written in loop "${config.name}"`)
+      }
+    }
+  }
+
+  // ─── Cache Helpers ──────────────────────────────────────
+
+  /**
+   * Check if a cached key is fresh (within TTL).
+   * @param {string} key
+   * @returns {{ fresh: boolean, stale: boolean, expired: boolean, age: number }}
+   */
+  function _checkCache(key) {
+    const entry = _cache.get(key)
+    if (!entry || entry.ttl <= 0) return { fresh: true, stale: false, expired: false, age: 0 }
+    const age = Date.now() - entry.timestamp
+    const fresh = age < entry.ttl
+    const expired = age >= entry.ttl * 2
+    const stale = !fresh && !expired
+    return { fresh, stale, expired, age }
+  }
+
+  /**
+   * Update cache entry for a key from the current state.
+   * @param {string} key
+   */
+  function _updateCache(key) {
+    const entry = _cache.get(key)
+    if (!entry) return
+    const currentVal = stateSignal.get()[key]
+    entry.value = currentVal
+    entry.timestamp = Date.now()
   }
 
   // ─── Internal Helpers ────────────────────────────────────
@@ -172,9 +248,14 @@ export function createLoop(config = {}) {
         (resolved) => {
           if (resolved !== undefined && resolved !== state) {
             const nextState = { ...stateSignal.get(), ...resolved }
+            for (const key of Object.keys(resolved)) _writtenKeys.add(key)
             stateSignal.set(nextState)
             notify()
             runEffects()
+            // Update cache for any cached keys
+            for (const key of Object.keys(resolved)) {
+              if (_cache.has(key)) _updateCache(key)
+            }
           }
         },
         (err) => {
@@ -183,7 +264,12 @@ export function createLoop(config = {}) {
       )
     } else if (result !== undefined && result !== state) {
       const nextState = { ...state, ...result }
+      for (const key of Object.keys(result)) _writtenKeys.add(key)
       stateSignal.set(nextState)
+      // Update cache for any cached keys
+      for (const key of Object.keys(result)) {
+        if (_cache.has(key)) _updateCache(key)
+      }
     }
   }
 
@@ -223,15 +309,22 @@ export function createLoop(config = {}) {
   // ─── Public API ──────────────────────────────────────────
 
   function get() {
-    return stateSignal.get()
+    const s = stateSignal.get()
+    for (const key of Object.keys(s)) _readKeys.add(key)
+    return s
   }
 
   function set(patch) {
     const next = typeof patch === 'function'
       ? patch(stateSignal.get())
       : { ...stateSignal.get(), ...patch }
+    for (const key of Object.keys(next)) _writtenKeys.add(key)
     stateSignal.set(next)
     notify()
+    // Update cache for any cached keys that changed
+    for (const key of Object.keys(patch)) {
+      if (_cache.has(key)) _updateCache(key)
+    }
   }
 
   /**
@@ -289,12 +382,14 @@ export function createLoop(config = {}) {
 
     // ── No registered handler? ─────────────────────────────
     if (!rawHandler) {
+      _devWarn(`Event "${event}" has no registered handler in loop "${config.name}"`)
       if (config.onUnknownEvent) config.onUnknownEvent(event, ...args)
       return
     }
 
     // ── Debounce: delay handler execution ──────────────────
     if (meta && meta.debounce > 0) {
+      _sentEvents.add(event)
       const prevTimer = _debounceTimers.get(event)
       if (prevTimer) clearTimeout(prevTimer)
       const timerId = setTimeout(() => {
@@ -306,6 +401,7 @@ export function createLoop(config = {}) {
     }
 
     // ── Execute immediately (non-debounced) ────────────────
+    _sentEvents.add(event)
     _executeWithContext(event, args, envelope)
   }
 
@@ -358,8 +454,13 @@ export function createLoop(config = {}) {
 
           if (result !== undefined && result !== currentState) {
             const nextState = { ...currentState, ...result }
+            for (const key of Object.keys(result)) _writtenKeys.add(key)
             stateSignal.set(nextState)
             _stateDidChange = true
+            // Update cache for any cached keys in the result
+            for (const key of Object.keys(result)) {
+              if (_cache.has(key)) _updateCache(key)
+            }
           }
         }, {
           notify: () => {
@@ -463,6 +564,94 @@ export function createLoop(config = {}) {
     return { debounce: meta.debounce, interruptible: meta.interruptible }
   }
 
+  // ─── Cache API ──────────────────────────────────────────
+
+  /**
+   * Get a cached value. Returns the value and freshness info.
+   * For SWR-enabled keys: returns stale data and triggers background refresh.
+   * @param {string} key
+   * @returns {{ value: any, fresh: boolean, stale: boolean, expired: boolean, age: number }}
+   */
+  function getCached(key) {
+    const entry = _cache.get(key)
+    const status = _checkCache(key)
+
+    if (!entry) {
+      return { value: stateSignal.get()[key], fresh: true, stale: false, expired: false, age: 0 }
+    }
+
+    // SWR: stale but not expired → return stale, trigger refresh in background
+    if (status.stale && entry.swr && !_swrInFlight.has(key)) {
+      _swrInFlight.add(key)
+      const fetchEvent = cacheConfig[key]?.fetch
+      if (fetchEvent) {
+        // Async refresh via event handler
+        Promise.resolve(send(fetchEvent))
+          .finally(() => _swrInFlight.delete(key))
+      } else {
+        _swrInFlight.delete(key)
+      }
+    }
+
+    return { value: entry.value, ...status }
+  }
+
+  /**
+   * Check cache status for a key without returning the value.
+   * @param {string} key
+   * @returns {{ fresh: boolean, stale: boolean, expired: boolean, age: number }}
+   */
+  function cacheStatus(key) {
+    return _checkCache(key)
+  }
+
+  /**
+   * Manually invalidate a cache entry. Next read will return fresh state value.
+   * @param {string} key
+   */
+  function invalidateCache(key) {
+    const entry = _cache.get(key)
+    if (entry) {
+      entry.timestamp = 0 // Force expired
+    }
+  }
+
+  /**
+   * Clear all cache entries.
+   */
+  function clearCache() {
+    _cache.clear()
+  }
+
+  // ─── Dev API ────────────────────────────────────────────
+
+  /**
+   * Run dev-mode validation checks. Called automatically after dispose.
+   * Can also be called manually to inspect state at any time.
+   * @returns {{ unusedKeys: string[], unknownEvents: string[] }}
+   */
+  function validate() {
+    const unusedKeys = []
+    const unknownEvents = []
+
+    for (const key of Object.keys(initialState)) {
+      if (!_readKeys.has(key) && !_writtenKeys.has(key)) {
+        unusedKeys.push(key)
+        _devWarn(`State key "${key}" is defined but never read or written in loop "${config.name}"`)
+      }
+    }
+
+    const knownEvents = new Set([...Object.keys(updateHandlers), ...Object.keys(effectHandlers)])
+    for (const ev of _sentEvents) {
+      if (!knownEvents.has(ev)) {
+        unknownEvents.push(ev)
+        _devWarn(`Event "${ev}" was sent but has no registered handler in loop "${config.name}"`)
+      }
+    }
+
+    return { unusedKeys, unknownEvents }
+  }
+
   function describe() {
     const result = JSON.parse(JSON.stringify(graph))
     // Add event metadata (total/rejected counts for diagnostics)
@@ -493,10 +682,20 @@ export function createLoop(config = {}) {
         result.nodes[name].suspend = true
       }
     }
+    // Add cache config metadata
+    for (const [key, cc] of Object.entries(cacheConfig)) {
+      if (result.nodes[key] || result.nodes.state) {
+        const target = result.nodes[key] || result.nodes.state
+        target.cache = { ttl: cc.ttl, swr: cc.swr || false }
+      }
+    }
     return result
   }
 
   function dispose() {
+    // Run dev-mode validation before cleanup
+    if (devMode) validate()
+
     // Clear all debounce timers
     for (const [event, timerId] of _debounceTimers) {
       clearTimeout(timerId)
@@ -513,6 +712,8 @@ export function createLoop(config = {}) {
     _errors.clear()
     _pending.clear()
     _handlerMeta.clear()
+    _cache.clear()
+    _swrInFlight.clear()
 
     subscribers.clear()
     effects.disposeAll()
@@ -544,6 +745,8 @@ export function createLoop(config = {}) {
     use: (plugin) => use({ get, set, send, subscribe, frame, describe }, plugin),
     registerNode, registerEdge, describe, dispose,
     isPending, getError, clearError, getMeta,
+    getCached, cacheStatus, invalidateCache, clearCache,
+    validate,
     events: {
       get total() { return _evCounter },
       get rejected() { return _evRejected },

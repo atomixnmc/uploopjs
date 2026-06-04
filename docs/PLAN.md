@@ -2,7 +2,7 @@
 
 ## Strategy: Quick Win / Best ROI
 
-### Phase 0 — Docs & Structure (Day 1)
+### Phase 0 — Docs & Structure ✅
 
 | Task | ROI |
 |------|-----|
@@ -12,7 +12,7 @@
 | Restructure to npm workspaces | High — foundation |
 | Archive old `lib/` flat structure | Medium — clean slate |
 
-### Phase 1 — `@uploop/core` (Day 1-2)
+### Phase 1 — `@uploop/core` ✅
 
 | Task | ROI |
 |------|-----|
@@ -23,9 +23,23 @@
 | `createEffect()` — effect system | High |
 | `batch()` — update batching | High |
 | `plugin()` — plugin protocol | Medium |
+| `createGraph()` — typed nodes + dependency indexes | High |
+| `createDOMExecution()` — execution protocol | High |
+| `component()` — HyperGraph component factory | **Critical** |
 | JSDoc types | Medium |
 
-### Phase 2 — `@uploop/html` (Day 2-3)
+### Phase 1.5 — v0.3.0 Async Metadata ✅
+
+| Task | ROI |
+|------|-----|
+| `debounce` — per-handler debounce with auto timers | **Critical** |
+| `error` — retry + exponential backoff + fallback state | **Critical** |
+| `suspend` — `isPending()` / `getError()` / `clearError()` API | **Critical** |
+| `interruptible` — auto AbortController per event | High |
+| `cache` — TTL + SWR cache layer with `getCached()` API | High |
+| `dev: true` — dev-mode validation (unused keys, unknown events) | Medium |
+
+### Phase 2 — `@uploop/html` ✅
 
 | Task | ROI |
 |------|-----|
@@ -37,64 +51,98 @@
 | Subscribe to core → auto-render | High |
 | Attribute/property sync | High |
 | `hydrate()` — SSR hydration | Medium |
+| `suspend()` — async data loading/error/success helper | High |
 
-### Phase 3 — Demo & Examples (Day 3)
-
-| Task | ROI |
-|------|-----|
-| Counter demo with new API | **Critical** |
-| TODO demo | High |
-| Todos demo | High |
-| Vite dev server demo | **Critical** |
-
-### Phase 4 — `@uploop/store` (Day 3-4)
+### Phase 3 — `@uploop/store` ✅
 
 | Task | ROI |
 |------|-----|
 | `store()` — external store | High |
 | `selector()` — derived selectors | High |
 | `derived()` — computed values | High |
+| `persist()` — localStorage persistence | Medium |
 | Connect store to core loop | High |
 
-### Phase 5 — `@uploop/router` (Day 4)
+### Phase 4 — `@uploop/router` 🟡
 
 | Task | ROI |
 |------|-----|
-| Simple route matching | High |
-| Navigation | High |
+| Simple route matching + navigation ✅ | High |
 | Route params | High |
+| Route guards | Medium |
+| Nested layouts | Medium |
 | Lazy component loading | Medium |
 
-### Phase 6 — `@uploop/css` (Day 4-5)
+### Phase 5 — `@uploop/css` 🟡
 
 | Task | ROI |
 |------|-----|
-| Utility class generation | High |
-| Theme tokens | High |
-| Dark mode | Medium |
-| Responsive variants | Medium |
+| Utility class generation ✅ | High |
+| Theme tokens ✅ | High |
+| Dark mode ✅ | Medium |
+| Responsive variants ✅ | Medium |
+| CSS injection ✅ | High |
+| Dynamic CSS ✅ | Medium |
+| Animation constants ✅ | Low |
+| CSS optimizer ✅ | Medium |
 
-### Phase 7 — Polish & Publish (Day 5)
+### Phase 6 — Demo & Examples 🟡
 
 | Task | ROI |
 |------|-----|
-| README rewrite | High |
+| Counter demo ✅ | **Critical** |
+| TODO demo ✅ | High |
+| Todos demo ✅ | High |
+| Vite dev server ✅ | **Critical** |
+| Form example ✅ | High |
+| HyperGraph debug panel ✅ | High |
+| 14 examples in demo gallery ✅ | High |
+| Async data example (debounce/suspend/cache) | High |
+| Routing example | High |
+
+### Phase 7 — Polish 🟡
+
+| Task | ROI |
+|------|-----|
+| README rewrite ✅ | High |
 | Vite config for library build | High |
-| Test setup | Medium |
+| Test suite for html package | Medium |
 | Package publishing | Medium |
+| CDN bundle | Medium |
 
-## Quick Win Path
+---
 
-**The fastest path to a working demo:**
+## v0.3.1 — Sugar Syntax & Cleanup (Next)
 
-1. ✅ Docs created
-2. Monorepo structure set up
-3. `@uploop/core` — createLoop + subscribe + signal + frame
-4. `@uploop/html` — html tag + component + defineElement + event binding
-5. Counter demo in Vite
-6. TODO demo in Vite
+### Priority B: Sugar Syntax (~105 lines)
 
-**This gives a working demo in ~3 focused sessions.**
+| # | Feature | Effort | Impact |
+|---|---|---|---|
+| B4 | `:model=` two-way binding | ~25 lines | ~60 chars saved per input |
+| B1 | `@click="inc"` string shorthand | ~30 lines | ~40 chars saved per handler |
+| B2+B3 | Auto-extract for form inputs | ~25 lines | ~30 chars saved per input |
+| B5 | Simple setter shorthand | ~25 lines | ~20 chars saved per setter |
+
+### Priority C: Internal Cleanup (~240 lines)
+
+| # | Task | Lines |
+|---|---|---|
+| C1 | Extract `component()` internals (378 → ~150) | ~150 |
+| C2 | Remove `_pendingVC` DOM side-channel | ~40 |
+| C3-L1 | Runtime HTML validation in html tag | ~50 |
+
+---
+
+## v0.4.0 — Architecture Breakthroughs (Future)
+
+| # | Feature | Impact |
+|---|---|---|
+| G1-G4 | Graph engine upgrade | O(changed) not O(full-tree) |
+| H1-H5 | HTML system upgrade | Stable binding IDs, unified parser |
+| E1-E4 | Execution breakthrough | Template diffing, DOM patch strategy |
+| - | `temperature` + `lifetime` data tiers | Heuristic-driven scheduling |
+
+---
 
 ## Key Design Decisions
 
@@ -105,3 +153,5 @@
 5. **Components are HyperGraphs** — nodes + edges, inspectable
 6. **Store is a bus** — external state connects via subscription
 7. **No build required** — ESM CDN import works out of the box
+8. **Async is declarative** — `debounce`, `error`, `suspend`, `interruptible`, `cache` metadata
+9. **Dev-mode catches bugs** — `dev: true` validates unused keys and unknown events
