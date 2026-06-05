@@ -51,13 +51,13 @@ function createWiredDOMExecution(loop, resources) {
           applyBindings(target, snapshot._bindings, send, get())
         }
 
-        processUploopAttributes(target, ctx)
+        const pendingVC = processUploopAttributes(target, ctx)
 
         if (resources.restore && snapshot._resources) {
           resources.restore(snapshot._resources, target)
         }
 
-        processVirtualContainers(target, ctx)
+        processVirtualContainers(target, ctx, pendingVC)
       }
     }
   }

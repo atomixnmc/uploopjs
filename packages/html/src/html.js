@@ -17,6 +17,8 @@
 // ════════════════════════════════════════════════════════════
 
 const _componentRegistry = {}
+let _bindId = 0
+const nextId = () => 'b' + (++_bindId)
 
 export function registerComponent(name, comp) {
   _componentRegistry[name] = comp
@@ -37,15 +39,10 @@ export function html(strings, ...values) {
       const eventMatch = prevStr.match(/@(\w+)\s*=$/)
       if (eventMatch) {
         const eventName = eventMatch[1]
-        const bindingIndex = bindings.length
-        bindings.push({
-          type: 'event',
-          name: eventName,
-          value,
-          index: bindingIndex
-        })
+        const id = nextId()
+        bindings.push({ type: 'event', name: eventName, value, id })
         parts[parts.length - 1] = prevStr.slice(0, -eventMatch[0].length) +
-          `data-up-event="${eventName}:${bindingIndex}"`
+          `data-up-event="${eventName}:${id}"`
         parts.push('')
         return
       }
@@ -54,15 +51,10 @@ export function html(strings, ...values) {
       const propMatch = prevStr.match(/\.(\w+)\s*=$/)
       if (propMatch) {
         const propName = propMatch[1]
-        const bindingIndex = bindings.length
-        bindings.push({
-          type: 'prop',
-          name: propName,
-          value,
-          index: bindingIndex
-        })
+        const id = nextId()
+        bindings.push({ type: 'prop', name: propName, value, id })
         parts[parts.length - 1] = prevStr.slice(0, -propMatch[0].length) +
-          `data-up-prop="${propName}:${bindingIndex}"`
+          `data-up-prop="${propName}:${id}"`
         parts.push('')
         return
       }
@@ -71,15 +63,10 @@ export function html(strings, ...values) {
       const boolMatch = prevStr.match(/\?(\w+)\s*=$/)
       if (boolMatch) {
         const attrName = boolMatch[1]
-        const bindingIndex = bindings.length
-        bindings.push({
-          type: 'bool',
-          name: attrName,
-          value,
-          index: bindingIndex
-        })
+        const id = nextId()
+        bindings.push({ type: 'bool', name: attrName, value, id })
         parts[parts.length - 1] = prevStr.slice(0, -boolMatch[0].length) +
-          `data-up-bool="${attrName}:${bindingIndex}"`
+          `data-up-bool="${attrName}:${id}"`
         parts.push('')
         return
       }
@@ -87,68 +74,14 @@ export function html(strings, ...values) {
       // Text/attribute interpolation — embed value directly into template string
       let strVal
       if (value && typeof value === 'object' && 'template' in value) {
-        const offset = bindings.length
-        const innerBindings = value.bindings || []
-        let htmlStr = value.toString()
-        // Remap in reverse order to prevent cascading index corruption:
-        // replacing click:2→click:3 BEFORE click:1→click:2 avoids
-        // the newly-created click:2 from being caught by the click:1→click:2 regex.
-        for (let bi = innerBindings.length - 1; bi >= 0; bi--) {
-          const newIdx = offset + bi
-          const oldIdx = innerBindings[bi].index
-          innerBindings[bi].index = newIdx
-          if (innerBindings[bi].type === 'event') {
-            htmlStr = htmlStr.replace(
-              new RegExp('data-up-event="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
-              'data-up-event="' + innerBindings[bi].name + ':' + newIdx + '"'
-            )
-          }
-          if (innerBindings[bi].type === 'prop') {
-            htmlStr = htmlStr.replace(
-              new RegExp('data-up-prop="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
-              'data-up-prop="' + innerBindings[bi].name + ':' + newIdx + '"'
-            )
-          }
-          if (innerBindings[bi].type === 'bool') {
-            htmlStr = htmlStr.replace(
-              new RegExp('data-up-bool="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
-              'data-up-bool="' + innerBindings[bi].name + ':' + newIdx + '"'
-            )
-          }
-        }
-        bindings.push(...innerBindings)
-        strVal = htmlStr
+        // IDs already globally unique — just merge bindings + HTML
+        bindings.push(...(value.bindings || []))
+        strVal = value.toString()
       } else if (Array.isArray(value)) {
         strVal = value.map(v => {
           if (v && typeof v === 'object' && 'template' in v) {
-            const offset = bindings.length
-            const innerBindings = v.bindings || []
-            let htmlStr = v.toString()
-            for (let bi = innerBindings.length - 1; bi >= 0; bi--) {
-              const newIdx = offset + bi
-              const oldIdx = innerBindings[bi].index
-              innerBindings[bi].index = newIdx
-              if (innerBindings[bi].type === 'event') {
-                htmlStr = htmlStr.replace(
-                  new RegExp('data-up-event="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
-                  'data-up-event="' + innerBindings[bi].name + ':' + newIdx + '"'
-                )
-              }
-              if (innerBindings[bi].type === 'prop') {
-                htmlStr = htmlStr.replace(
-                  new RegExp('data-up-prop="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
-                  'data-up-prop="' + innerBindings[bi].name + ':' + newIdx + '"'
-                )
-              }
-              if (innerBindings[bi].type === 'bool') {
-                htmlStr = htmlStr.replace(
-                  new RegExp('data-up-bool="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
-                  'data-up-bool="' + innerBindings[bi].name + ':' + newIdx + '"'
-                )
-              }
-            }
-            bindings.push(...innerBindings)
-            return htmlStr
+            bindings.push(...(v.bindings || []))
+            return v.toString()
           }
           return v === null || v === undefined ? '' : String(v)
         }).join('')
@@ -215,8 +148,8 @@ export function applyBindings(root, bindings, send, state) {
 
   for (const binding of bindings) {
     if (binding.type === 'event') {
-      const { name: eventName, value: handler, index } = binding
-      const selector = `[data-up-event="${eventName}:${index}"]`
+      const { name: eventName, value: handler, id } = binding
+      const selector = `[data-up-event="${eventName}:${id}"]`
       const targets = root.querySelectorAll(selector)
 
       for (const target of targets) {
@@ -238,8 +171,8 @@ export function applyBindings(root, bindings, send, state) {
     }
 
     if (binding.type === 'prop') {
-      const { name: propName, value, index } = binding
-      const targets = root.querySelectorAll(`[data-up-prop="${propName}:${index}"]`)
+      const { name: propName, value, id } = binding
+      const targets = root.querySelectorAll(`[data-up-prop="${propName}:${id}"]`)
       for (const target of targets) {
         target.removeAttribute('data-up-prop')
         const val = typeof value === 'function' ? value(state) : value
@@ -248,8 +181,8 @@ export function applyBindings(root, bindings, send, state) {
     }
 
     if (binding.type === 'bool') {
-      const { name: attrName, value, index } = binding
-      const targets = root.querySelectorAll(`[data-up-bool="${attrName}:${index}"]`)
+      const { name: attrName, value, id } = binding
+      const targets = root.querySelectorAll(`[data-up-bool="${attrName}:${id}"]`)
       for (const target of targets) {
         target.removeAttribute('data-up-bool')
         const val = typeof value === 'function' ? value(state) : value
@@ -277,7 +210,7 @@ export function isHtmlTemplate(val) {
  * and uploop-containers attributes.
  */
 export function processUploopAttributes(root, ctx) {
-  if (!root) return
+  if (!root) return []
 
   // register-resource — auto-persist element across re-renders
   const resources = root.querySelectorAll('[register-resource]')
@@ -332,8 +265,8 @@ export function processUploopAttributes(root, ctx) {
   // child props. Actual instance creation/update happens
   // in processVirtualContainers() after resource restore.
   const vContainers = root.querySelectorAll('[uploop-containers]')
+  const pendingVC = []
   if (vContainers.length > 0) {
-    if (!root._pendingVC) root._pendingVC = []
     for (const container of vContainers) {
       const mode = container.getAttribute('uploop-containers')
       const scopeName = container.getAttribute('uploop-scope') || container.getAttribute('data-up-scope') || ''
@@ -354,10 +287,11 @@ export function processUploopAttributes(root, ctx) {
           }
           defs.push({ tag: childEl.tagName.toLowerCase(), props })
         }
-        root._pendingVC.push({ scopeName, defs })
+        pendingVC.push({ scopeName, defs })
       }
     }
   }
+  return pendingVC
 }
 
 /**
@@ -366,11 +300,10 @@ export function processUploopAttributes(root, ctx) {
  * creates component instances. On re-render, pushes new props
  * from the captured placeholder DOM attributes to existing instances.
  */
-export function processVirtualContainers(root, ctx) {
-  if (!root) return
-
-  const pending = root._pendingVC || []
-  if (pending.length === 0) return
+export function processVirtualContainers(root, ctx, pendingVC) {
+  if (!root || !pendingVC) return
+  if (!Array.isArray(pendingVC)) pendingVC = root._pendingVC || []
+  if (pendingVC.length === 0) return
   delete root._pendingVC
 
   const containers = root.querySelectorAll('[data-up-containers]')
@@ -380,7 +313,7 @@ export function processVirtualContainers(root, ctx) {
     if (mode !== 'virtual' || container.tagName?.toLowerCase() !== 'canvas') continue
 
     const ctx2d = container.getContext?.('2d') || null
-    const entry = pending.find(p => p.scopeName === scopeName)
+    const entry = pendingVC.find(p => p.scopeName === scopeName)
     if (!entry) continue
 
     container.innerHTML = ''
