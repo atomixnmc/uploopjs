@@ -8,18 +8,15 @@
  * - `.value=${val}` property binding (data-up-prop marker)
  * - `?checked=${bool}` boolean attribute binding (data-up-bool marker)
  *
- * Bindings use globally unique IDs (not position-based indices), so
- * nested templates never need index remapping — no regex string munging.
+ * @param {TemplateStringsArray} strings
+ * @param {...any} values
+ * @returns {Object} Template descriptor
  */
-
-// ─── Global state ────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// Component Registry — for resolving PascalCase tags in html()
+// ════════════════════════════════════════════════════════════
 
 const _componentRegistry = {}
-let _bindIdCounter = 0
-
-function nextBindId() {
-  return 'b' + (++_bindIdCounter)
-}
 
 export function registerComponent(name, comp) {
   _componentRegistry[name] = comp
@@ -36,62 +33,129 @@ export function html(strings, ...values) {
       const value = values[i]
       const prevStr = str
 
-      // ── Event binding: @click=${handler} ──────────────────
+      // Detect event binding: @click=${handler}
       const eventMatch = prevStr.match(/@(\w+)\s*=$/)
       if (eventMatch) {
         const eventName = eventMatch[1]
-        const id = nextBindId()
-        bindings.push({ type: 'event', name: eventName, value, id })
+        const bindingIndex = bindings.length
+        bindings.push({
+          type: 'event',
+          name: eventName,
+          value,
+          index: bindingIndex
+        })
         parts[parts.length - 1] = prevStr.slice(0, -eventMatch[0].length) +
-          `data-up-event="${eventName}:${id}"`
+          `data-up-event="${eventName}:${bindingIndex}"`
         parts.push('')
         return
       }
 
-      // ── Property binding: .value=${val} ───────────────────
+      // Detect property binding: .value=${val}
       const propMatch = prevStr.match(/\.(\w+)\s*=$/)
       if (propMatch) {
         const propName = propMatch[1]
-        const id = nextBindId()
-        bindings.push({ type: 'prop', name: propName, value, id })
+        const bindingIndex = bindings.length
+        bindings.push({
+          type: 'prop',
+          name: propName,
+          value,
+          index: bindingIndex
+        })
         parts[parts.length - 1] = prevStr.slice(0, -propMatch[0].length) +
-          `data-up-prop="${propName}:${id}"`
+          `data-up-prop="${propName}:${bindingIndex}"`
         parts.push('')
         return
       }
 
-      // ── Boolean attribute: ?checked=${bool} ───────────────
+      // Detect boolean attribute: ?checked=${bool}
       const boolMatch = prevStr.match(/\?(\w+)\s*=$/)
       if (boolMatch) {
         const attrName = boolMatch[1]
-        const id = nextBindId()
-        bindings.push({ type: 'bool', name: attrName, value, id })
+        const bindingIndex = bindings.length
+        bindings.push({
+          type: 'bool',
+          name: attrName,
+          value,
+          index: bindingIndex
+        })
         parts[parts.length - 1] = prevStr.slice(0, -boolMatch[0].length) +
-          `data-up-bool="${attrName}:${id}"`
+          `data-up-bool="${attrName}:${bindingIndex}"`
         parts.push('')
         return
       }
 
-      // ── Template object interpolation ─────────────────────
+      // Text/attribute interpolation — embed value directly into template string
       let strVal
       if (value && typeof value === 'object' && 'template' in value) {
-        // Nested template — merge bindings directly (IDs already globally unique)
+        const offset = bindings.length
         const innerBindings = value.bindings || []
+        let htmlStr = value.toString()
+        // Remap in reverse order to prevent cascading index corruption:
+        // replacing click:2→click:3 BEFORE click:1→click:2 avoids
+        // the newly-created click:2 from being caught by the click:1→click:2 regex.
+        for (let bi = innerBindings.length - 1; bi >= 0; bi--) {
+          const newIdx = offset + bi
+          const oldIdx = innerBindings[bi].index
+          innerBindings[bi].index = newIdx
+          if (innerBindings[bi].type === 'event') {
+            htmlStr = htmlStr.replace(
+              new RegExp('data-up-event="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+              'data-up-event="' + innerBindings[bi].name + ':' + newIdx + '"'
+            )
+          }
+          if (innerBindings[bi].type === 'prop') {
+            htmlStr = htmlStr.replace(
+              new RegExp('data-up-prop="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+              'data-up-prop="' + innerBindings[bi].name + ':' + newIdx + '"'
+            )
+          }
+          if (innerBindings[bi].type === 'bool') {
+            htmlStr = htmlStr.replace(
+              new RegExp('data-up-bool="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+              'data-up-bool="' + innerBindings[bi].name + ':' + newIdx + '"'
+            )
+          }
+        }
         bindings.push(...innerBindings)
-        strVal = value.toString()
+        strVal = htmlStr
       } else if (Array.isArray(value)) {
-        // Array of templates/nodes — merge bindings + join HTML
         strVal = value.map(v => {
           if (v && typeof v === 'object' && 'template' in v) {
-            bindings.push(...(v.bindings || []))
-            return v.toString()
+            const offset = bindings.length
+            const innerBindings = v.bindings || []
+            let htmlStr = v.toString()
+            for (let bi = innerBindings.length - 1; bi >= 0; bi--) {
+              const newIdx = offset + bi
+              const oldIdx = innerBindings[bi].index
+              innerBindings[bi].index = newIdx
+              if (innerBindings[bi].type === 'event') {
+                htmlStr = htmlStr.replace(
+                  new RegExp('data-up-event="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+                  'data-up-event="' + innerBindings[bi].name + ':' + newIdx + '"'
+                )
+              }
+              if (innerBindings[bi].type === 'prop') {
+                htmlStr = htmlStr.replace(
+                  new RegExp('data-up-prop="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+                  'data-up-prop="' + innerBindings[bi].name + ':' + newIdx + '"'
+                )
+              }
+              if (innerBindings[bi].type === 'bool') {
+                htmlStr = htmlStr.replace(
+                  new RegExp('data-up-bool="' + innerBindings[bi].name + ':' + oldIdx + '"', 'g'),
+                  'data-up-bool="' + innerBindings[bi].name + ':' + newIdx + '"'
+                )
+              }
+            }
+            bindings.push(...innerBindings)
+            return htmlStr
           }
           return v === null || v === undefined ? '' : String(v)
         }).join('')
       } else {
         strVal = value === null || value === undefined ? '' : String(value)
       }
-      parts.push(strVal)
+      parts[parts.length - 1] += strVal
     }
   })
 
@@ -104,49 +168,61 @@ export function html(strings, ...values) {
     const tagName = pm[1]
     const comp = _componentRegistry[tagName]
     if (!comp) continue
+
+    // Parse attributes from the matched tag
     const props = {}
-    const attrStr = pm[2].trim()
-    const attrRe = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\x00(\d+)\x00)/g
+    const attrStr = pm[2] || ''
+    const attrRe = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
     let am
     while ((am = attrRe.exec(attrStr))) {
       const key = am[1]
-      let n = am[2] ?? am[4]
-      if (n === 'true') { props[key] = true }
-      else if (n === 'false') { props[key] = false }
-      else if (!isNaN(Number(n)) && am[4]) { props[key] = Number(n) }
-      else { props[key] = n ?? am[3] ?? '' }
+      if (am[2] !== undefined) { const n = Number(am[2]); props[key] = isNaN(n) ? am[2] : n }
+      else if (am[3] !== undefined) { const n = Number(am[3]); props[key] = isNaN(n) ? am[3] : n }
     }
-    const inst = comp(props)
-    const rendered = String(inst)
-    template = template.replace(pm[0], rendered)
-  }
+    const bare = attrStr.replace(/\w+\s*=\s*(?:"[^"]*"|'[^']*')/g, '')
+    const boolRe = /(\w+)(?=\s|$)/g
+    let bm
+    while ((bm = boolRe.exec(bare))) {
+      if (!(bm[1] in props)) props[bm[1]] = true
+    }
 
-  // Post-process: resolve data-up placeholder attributes
-  // (Previously done via regex remapping — now handled by componentTag)
-  template = componentTag(template)
+    // Create component instance and render
+    try {
+      const inst = comp.create(props)
+      const rendered = inst.render()
+      template = template.replace(pm[0], rendered)
+      // Reset regex lastIndex since template changed
+      pascalRe.lastIndex = pm.index + rendered.length
+    } catch (e) {
+      console.warn('[Uploop] failed to render component "' + tagName + '":', e)
+    }
+  }
 
   return {
     template,
     bindings,
-    toString() { return template },
-    toJSON() { return template }
+    values,
+    toString: () => template,
+    toJSON: () => template
   }
 }
 
 /**
- * Apply event/prop/bool bindings from a template descriptor to DOM elements.
- * Uses globally unique binding IDs — no index-based lookup needed.
+ * Apply event bindings to mounted DOM by finding data-up-event markers.
  */
 export function applyBindings(root, bindings, send, state) {
   if (!root || !bindings) return
 
   for (const binding of bindings) {
     if (binding.type === 'event') {
-      const { name: eventName, value: handler, id } = binding
-      const targets = root.querySelectorAll(`[data-up-event="${eventName}:${id}"]`)
+      const { name: eventName, value: handler, index } = binding
+      const selector = `[data-up-event="${eventName}:${index}"]`
+      const targets = root.querySelectorAll(selector)
+
       for (const target of targets) {
         target.removeAttribute('data-up-event')
         const useSend = binding._ownerSend || send
+
         if (typeof handler === 'function') {
           target.addEventListener(eventName, handler)
         } else if (typeof handler === 'string') {
@@ -162,8 +238,8 @@ export function applyBindings(root, bindings, send, state) {
     }
 
     if (binding.type === 'prop') {
-      const { name: propName, value, id } = binding
-      const targets = root.querySelectorAll(`[data-up-prop="${propName}:${id}"]`)
+      const { name: propName, value, index } = binding
+      const targets = root.querySelectorAll(`[data-up-prop="${propName}:${index}"]`)
       for (const target of targets) {
         target.removeAttribute('data-up-prop')
         const val = typeof value === 'function' ? value(state) : value
@@ -172,8 +248,8 @@ export function applyBindings(root, bindings, send, state) {
     }
 
     if (binding.type === 'bool') {
-      const { name: attrName, value, id } = binding
-      const targets = root.querySelectorAll(`[data-up-bool="${attrName}:${id}"]`)
+      const { name: attrName, value, index } = binding
+      const targets = root.querySelectorAll(`[data-up-bool="${attrName}:${index}"]`)
       for (const target of targets) {
         target.removeAttribute('data-up-bool')
         const val = typeof value === 'function' ? value(state) : value
@@ -185,211 +261,341 @@ export function applyBindings(root, bindings, send, state) {
 }
 
 /**
- * Check if a value is an html template descriptor.
+ * Check if a value is an html template descriptor
  */
-export function isHtmlTemplate(value) {
-  return value && typeof value === 'object' && 'template' in value
+export function isHtmlTemplate(val) {
+  return val && typeof val === 'object' && 'template' in val && 'bindings' in val
 }
 
+// ════════════════════════════════════════════════════════════
+// Uploop Attribute System — scope, context, auto-resource
+// ════════════════════════════════════════════════════════════
+
 /**
- * Process Uploop-specific DOM attributes on a root element.
- * Returns pending virtual container data (no DOM side-channel).
+ * Post-process DOM after innerHTML + applyBindings.
+ * Detects uploop-scope, provide-context, register-resource,
+ * and uploop-containers attributes.
  */
 export function processUploopAttributes(root, ctx) {
-  if (!root) return []
+  if (!root) return
 
+  // register-resource — auto-persist element across re-renders
   const resources = root.querySelectorAll('[register-resource]')
   for (const el of resources) {
-    const name = el.getAttribute('register-resource') || el.id
+    const name = el.getAttribute('register-resource')
     el.removeAttribute('register-resource')
-    if (ctx && ctx.registerResource) {
+    if (ctx.registerResource) {
       ctx.registerResource(name, {
-        save() {
-          return {
-            idx: [...el.parentElement.children].indexOf(el),
-            containerId: el.parentElement?.id || '',
-            tag: el.tagName.toLowerCase(),
-            id: el.id || '',
-            html: el.innerHTML
-          }
-        },
-        restore(data, rootEl) {
-          if (!data) return
+        save: () => ({
+          idx: el.parentNode ? Array.from(el.parentNode.children).indexOf(el) : -1,
+          containerId: el.parentElement?.id || '',
+          tag: el.tagName.toLowerCase(),
+          id: el.id || ''
+        }),
+        restore: (data, mountRoot) => {
+          // Find the target container in current DOM (survives innerHTML)
           const container = data.containerId
-            ? rootEl?.querySelector?.('#' + data.containerId)
-            : rootEl
+            ? mountRoot.querySelector('#' + data.containerId)
+            : mountRoot
           if (!container) return
-          // Find duplicate and replace with the preserved element
-          let dup = data.tag && data.id
-            ? container.querySelector(data.tag + '#' + data.id)
-            : null
+          // Remove duplicate by replacing it with the preserved element
+          let dup = container.querySelector(data.tag + '[data-up-provide]')
+          if (!dup && data.id) dup = mountRoot.querySelector('#' + data.id)
           if (dup && dup !== el && dup.parentNode) {
             dup.parentNode.replaceChild(el, dup)
           } else if (!container.contains(el)) {
-            if (data.idx >= 0 && data.idx < container.children.length) {
-              container.insertBefore(el, container.children[data.idx])
-            } else {
-              container.appendChild(el)
-            }
+            container.appendChild(el)
           }
         }
       })
     }
   }
 
-  // Process data-up-provide attributes
-  const providers = root.querySelectorAll('[data-up-provide]')
+  // provide-context — mark element as context provider
+  const providers = root.querySelectorAll('[provide-context]')
   for (const el of providers) {
-    const name = el.getAttribute('data-up-provide')
-    if (name && ctx) {
-      ctx[name] = ctx[name] || (() => el)
-    }
+    const name = el.getAttribute('provide-context')
+    el.setAttribute('data-up-provide', name)
+    el.removeAttribute('provide-context')
   }
 
-  // Collect pending virtual container definitions (no DOM side-channel)
-  const pendingVC = []
+  // uploop-scope — mark element as scope boundary
+  const scopes = root.querySelectorAll('[uploop-scope]')
+  for (const el of scopes) {
+    const name = el.getAttribute('uploop-scope')
+    el.setAttribute('data-up-scope', name)
+    el.removeAttribute('uploop-scope')
+  }
+
+  // ─── Virtual Containers (capture phase) ──────────────────
+  // Scans new DOM for uploop-containers and stores virtual
+  // child props. Actual instance creation/update happens
+  // in processVirtualContainers() after resource restore.
   const vContainers = root.querySelectorAll('[uploop-containers]')
-  for (const container of vContainers) {
-    const mode = container.getAttribute('uploop-containers')
-    const scopeName = container.getAttribute('uploop-scope') || container.getAttribute('data-up-scope') || ''
-    container.removeAttribute('uploop-containers')
-    container.setAttribute('data-up-containers', mode)
-    if (mode === 'virtual' && container.tagName?.toLowerCase() === 'canvas') {
-      const defs = []
-      for (const childEl of container.children) {
-        const props = {}
-        for (const attr of childEl.attributes) {
-          const n = attr.value
-          const val = n === 'true' ? true : n === 'false' ? false : (!isNaN(Number(n)) ? Number(n) : n)
-          props[attr.name] = val
+  if (vContainers.length > 0) {
+    if (!root._pendingVC) root._pendingVC = []
+    for (const container of vContainers) {
+      const mode = container.getAttribute('uploop-containers')
+      const scopeName = container.getAttribute('uploop-scope') || container.getAttribute('data-up-scope') || ''
+
+      container.removeAttribute('uploop-containers')
+      container.setAttribute('data-up-containers', mode)
+
+      if (mode === 'virtual' && container.tagName?.toLowerCase() === 'canvas') {
+        const defs = []
+        for (const childEl of Array.from(container.children)) {
+          const props = {}
+          for (const attr of Array.from(childEl.attributes)) {
+            if (attr.name.startsWith('data-up-')) continue
+            const val = attr.value
+            if (val === 'true') props[attr.name] = true
+            else if (val === 'false') props[attr.name] = false
+            else { const n = Number(val); props[attr.name] = isNaN(n) ? val : n }
+          }
+          defs.push({ tag: childEl.tagName.toLowerCase(), props })
         }
-        defs.push({ tag: childEl.tagName.toLowerCase(), props })
+        root._pendingVC.push({ scopeName, defs })
       }
-      pendingVC.push({ scopeName, defs })
     }
   }
-
-  return pendingVC
 }
 
 /**
- * Hydrate virtual container instances from pending definitions.
+ * Second-pass: process virtual containers AFTER resource restore.
+ * The restored canvas element is now in DOM. On first render,
+ * creates component instances. On re-render, pushes new props
+ * from the captured placeholder DOM attributes to existing instances.
  */
-export function processVirtualContainers(root, ctx, pendingVC = []) {
+export function processVirtualContainers(root, ctx) {
   if (!root) return
 
-  const containers = root.querySelectorAll('[data-up-containers]')
-  if (containers.length === 0) return
+  const pending = root._pendingVC || []
+  if (pending.length === 0) return
+  delete root._pendingVC
 
-  // Process each pending definition against each container
-  let vcIdx = 0
+  const containers = root.querySelectorAll('[data-up-containers]')
   for (const container of containers) {
     const mode = container.getAttribute('data-up-containers')
-    // Read scope from uploop-scope attribute set on canvas
-    const scopeAttr = container.getAttribute('uploop-scope') || container.getAttribute('data-up-scope') || ''
-    container.removeAttribute('data-up-containers')
+    const scopeName = container.getAttribute('uploop-scope') || container.getAttribute('data-up-scope') || ''
+    if (mode !== 'virtual' || container.tagName?.toLowerCase() !== 'canvas') continue
 
-    if (mode === 'virtual' && container.tagName?.toLowerCase() === 'canvas') {
-      const ctx2d = container.getContext('2d')
+    const ctx2d = container.getContext?.('2d') || null
+    const entry = pending.find(p => p.scopeName === scopeName)
+    if (!entry) continue
 
-      // Match pending definitions by scope name
-      const pendingForContainer = pendingVC.filter(p => p.scopeName === scopeAttr)
+    container.innerHTML = ''
 
-      for (const entry of pendingForContainer) {
-        const existing = entry._instances || []
-        const instances = [...existing]
+    const existing = container._upInstances || []
 
-        for (const def of entry.defs) {
-          const existingInst = existing.find(i =>
-            i.constructor && (i.constructor.name === def.tag || i.constructor.name?.toLowerCase() === def.tag))
+    if (existing.length > 0) {
+      // ── Re-render: push new props to existing instances ──
+      for (let i = 0; i < existing.length && i < entry.defs.length; i++) {
+        const inst = existing[i]
+        const newProps = entry.defs[i]?.props
+        if (inst && inst.loop && newProps) {
+          const cur = inst.loop.get()
+          let changed = false
+          for (const [k, v] of Object.entries(newProps)) {
+            if (cur[k] !== v) { changed = true; break }
+          }
+          if (changed) inst.loop.set({ ...cur, ...newProps })
+        }
+      }
+      for (const inst of existing) {
+        if (inst.ctx2d !== undefined && ctx2d) inst.ctx2d = ctx2d
+      }
+    } else {
+      // ── First render: create component instances ──
+      const instances = []
+      for (const def of entry.defs) {
+        const Comp = resolveScope(scopeName, def.tag)
+        if (typeof Comp === 'function') {
+          const inst = Comp(def.props)
+          if (inst) {
+            if (inst.ctx2d !== undefined && ctx2d) inst.ctx2d = ctx2d
+            instances.push(inst)
+          }
+        } else {
+          console.warn('[vc] component not found for tag:', def.tag, 'scope:', scopeName)
+        }
+      }
+      container._upInstances = instances
 
-          if (existingInst && ctx2d) {
-            const newProps = def.props
-            const cur = existingInst.loop?.get()
-            let changed = false
-            for (const [k, v] of Object.entries(newProps)) {
-              if (cur && cur[k] !== v) { changed = true; break }
+      // Register canvas as persistent resource
+      if (ctx.registerResource) {
+        ctx.registerResource(`vc-canvas:${scopeName}`, {
+          save: () => ({
+            idx: container.parentNode ? Array.from(container.parentNode.children).indexOf(container) : -1,
+            containerId: container.parentElement?.id || '',
+            tag: container.tagName.toLowerCase()
+          }),
+          restore: (data, mountRoot) => {
+            const target = data.containerId
+              ? mountRoot.querySelector('#' + data.containerId)
+              : mountRoot
+            if (!target) return
+            const dup = target.querySelector(data.tag + '[data-up-containers]')
+            if (dup && dup !== container) dup.remove()
+            if (!target.contains(container)) {
+              if (data.idx >= 0 && data.idx < target.children.length) {
+                target.insertBefore(container, target.children[data.idx])
+              } else {
+                target.appendChild(container)
+              }
             }
-            if (changed && existingInst.loop) {
-              existingInst.loop.set({ ...cur, ...newProps })
-            }
-            existingInst.ctx2d = ctx2d
-            if (existingInst.startFrameLoop) existingInst.startFrameLoop(container)
-          } else {
-            const scope = ctx?.scope || resolveScope(scopeAttr)
-            const Comp = scope ? scope[def.tag] : null
-            if (Comp) {
-              const inst = Comp({ ...def.props, w: Number(container.getAttribute('width') || 700), h: Number(container.getAttribute('height') || 300) })
-              if (ctx2d) inst.ctx2d = ctx2d
-              if (inst.startFrameLoop) inst.startFrameLoop(container)
-              instances.push(inst)
+            const freshCtx = container.getContext?.('2d')
+            for (const inst of (container._upInstances || [])) {
+              if (inst.ctx2d !== undefined && freshCtx) inst.ctx2d = freshCtx
             }
           }
-        }
-
-        entry._instances = instances
+        })
       }
     }
   }
 }
 
-// ─── Scope registry ─────────────────────────────────────────
-
-let _scopeRegistry = null
-
-export function resolveScope(name) {
-  if (!name) return null
-  if (typeof document !== 'undefined') {
-    const reg = document.__uploop_scopes
-    return reg ? reg[name] : null
-  }
-  return _scopeRegistry ? _scopeRegistry[name] : null
-}
-
-export function registerScope(scopeName, classes) {
-  if (typeof document !== 'undefined') {
-    const reg = document.__uploop_scopes || (document.__uploop_scopes = {})
-    if (!reg[scopeName]) reg[scopeName] = {}
-    Object.assign(reg[scopeName], classes)
-  } else {
-    if (!_scopeRegistry) _scopeRegistry = {}
-    if (!_scopeRegistry[scopeName]) _scopeRegistry[scopeName] = {}
-    Object.assign(_scopeRegistry[scopeName], classes)
-  }
-}
-
-// ─── Component tag parsing ──────────────────────────────────
-
-export function componentTag(template) {
-  const tagRe = /<([\w-]+)\s*([^>]*)\/>/g
-  let result = template
-  let m
-  while ((m = tagRe.exec(template))) {
-    const tagName = m[1]
-    const attrStr = m[2].trim()
-    const props = {}
-    const attrRe = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\x00(\d+)\x00)/g
-    let am
-    while ((am = attrRe.exec(attrStr))) {
-      const key = am[1]
-      let val = am[2] ?? am[4]
-      if (val === 'true') props[key] = true
-      else if (val === 'false') props[key] = false
-      else if (!isNaN(Number(val)) && am[4]) props[key] = Number(val)
-      else props[key] = val ?? am[3] ?? ''
-    }
-  }
-  return result
-}
-
-export { consumeContext, resolveContext }
-function consumeContext(root, name) {
-  let current = root
+/**
+ * Walk up DOM to find nearest context provider, then search
+ * descendants of the root if not found among ancestors.
+ * `<canvas provide-context="canvas-context">` → { el, width, height, ctx2d }
+ */
+export function consumeContext(el, name) {
+  // Search ancestors first
+  let current = el
   while (current) {
-    const provider = current.getAttribute?.('data-up-provide')
-    if (provider === name) return current
+    if (current.getAttribute?.('data-up-provide') === name) return resolveContext(current)
     current = current.parentElement
+  }
+  // Then search descendants (the common case — canvas is child of component root)
+  if (el.querySelector) {
+    const provider = el.querySelector(`[data-up-provide="${name}"]`)
+    if (provider) return resolveContext(provider)
   }
   return null
 }
-function resolveContext(data) { return data }
+
+function resolveContext(el) {
+  if (el.tagName?.toLowerCase() === 'canvas') {
+    return { el, width: el.width, height: el.height, ctx2d: el.getContext?.('2d') || null }
+  }
+  return { el }
+}
+
+/** Resolve component class from a named scope registry on document. */
+export function resolveScope(scopeName, tagName) {
+  if (typeof document === 'undefined') return null
+  const reg = document.__uploop_scopes || (document.__uploop_scopes = {})
+  return reg[scopeName]?.[tagName] || null
+}
+
+/** Register component classes in a named scope. */
+export function registerScope(scopeName, classes) {
+  if (typeof document === 'undefined') return
+  const reg = document.__uploop_scopes || (document.__uploop_scopes = {})
+  if (!reg[scopeName]) reg[scopeName] = {}
+  Object.assign(reg[scopeName], classes)
+}
+
+// ════════════════════════════════════════════════════════════
+// componentTag — JSX-like tagged template for compose()
+// ════════════════════════════════════════════════════════════
+
+export function componentTag(classes = {}) {
+  const tag = (strings, ...values) => {
+    let raw = ''
+    for (let i = 0; i < strings.length; i++) {
+      raw += strings[i]
+      if (i < values.length) raw += '\x00' + i + '\x00'
+    }
+
+    let Cls, attrStr, tagName = ''
+
+    // Case 1: <Wheel .../> — literal tag, lookup from classes
+    const tagMatch = raw.match(/^\s*<(\w+)([^>]*?)\s*\/>\s*$/s)
+    if (tagMatch) {
+      tagName = tagMatch[1]
+      Cls = classes[tagMatch[1]]
+      if (!Cls) return null
+      attrStr = tagMatch[2] || ''
+    } else {
+      // Case 2: <${Class} .../> — dynamic class in tag position
+      const dynMatch = raw.match(/^\s*<\x00(\d+)\x00([^>]*?)\s*\/>\s*$/s)
+      if (dynMatch) {
+        const clsIdx = parseInt(dynMatch[1])
+        if (clsIdx < values.length && typeof values[clsIdx] === 'function') {
+          Cls = values[clsIdx]
+          tagName = Cls.name || 'DynamicComponent'
+          attrStr = dynMatch[2] || ''
+        } else { return null }
+      } else { return null }
+    }
+
+    // Check for :props= binding — pass raw JS object directly to Cls()
+    if (attrStr) {
+      const pm = attrStr.match(/:props\s*=\s*\x00(\d+)\x00/)
+      if (pm) {
+        const idx = parseInt(pm[1])
+        if (idx < values.length) return Cls(values[idx])
+      }
+    }
+
+    // Parse attributes
+    const props = {}
+    const quotedKeys = new Set()
+    if (attrStr) {
+      const attrRe = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|\x00(\d+)\x00)/g
+      let m
+      while ((m = attrRe.exec(attrStr))) {
+        const key = m[1]
+        if (m[2] !== undefined) { const n = Number(m[2]); props[key] = isNaN(n) ? m[2] : n; quotedKeys.add(key) }
+        else if (m[3] !== undefined) { const n = Number(m[3]); props[key] = isNaN(n) ? m[3] : n; quotedKeys.add(key) }
+        else if (m[4] !== undefined) {
+          const idx = parseInt(m[4])
+          props[key] = idx < values.length ? values[idx] : undefined
+        }
+      }
+      const boolRe = /(\w+)(?=\s|$|\/>)/g
+      const bare = attrStr.replace(/\w+\s*=\s*(?:"[^"]*"|'[^']*'|\x00\d+\x00)/g, '')
+      let bm
+      while ((bm = boolRe.exec(bare))) {
+        if (!(bm[1] in props)) props[bm[1]] = true
+      }
+    }
+
+    // ─── Dev-mode warnings ───────────────────────────────
+    if (typeof DEV !== 'undefined' && DEV) {
+      if (Cls._originalView) {
+        // 1. Unknown prop check via describe()
+        if (typeof Cls.describe === 'function') {
+          const graph = Cls.describe()
+          const knownKeys = new Set()
+          if (graph && graph.nodes) {
+            for (const [k, node] of Object.entries(graph.nodes)) {
+              if (node && node.type === 'data') knownKeys.add(k)
+            }
+          }
+          for (const key of Object.keys(props)) {
+            if (!knownKeys.has(key)) {
+              console.warn('[Uploop] ' + tagName + ': unknown prop "' + key + '"')
+            }
+          }
+        }
+        // 2. Function props with 'on' prefix — suggest @callback
+        for (const [key, val] of Object.entries(props)) {
+          if (typeof val === 'function' && key.startsWith('on')) {
+            console.warn('[Uploop] ' + tagName + ': prop "' + key + '" is a function — consider @' + key + ' for callbacks')
+          }
+        }
+        // 3. Quoted strings that look like booleans
+        for (const key of quotedKeys) {
+          if (props[key] === 'true' || props[key] === 'false') {
+            console.warn('[Uploop] ' + tagName + ': prop "' + key + '" is the string "' + props[key] + '" — use ${' + props[key] + '} or bare attribute for boolean')
+          }
+        }
+      }
+    }
+
+    return Cls(props)
+  }
+  return tag
+}

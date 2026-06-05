@@ -309,17 +309,6 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     }
 
     function mount(el) {
-      if (frameMode === 'visual' && !_ctx2d) {
-        let canvas = el?.closest?.('canvas') || el?.parentElement?.closest?.('canvas')
-        if (!canvas && el?.ownerDocument) {
-          canvas = el.ownerDocument.querySelector('canvas')
-        }
-        if (canvas) {
-          _ctx2d = canvas.getContext('2d')
-          instanceLoop._canvasEl = canvas
-        }
-      }
-
       function applyMount() {
         const result = doRender()
         if (!result || !el) return
@@ -348,6 +337,30 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       }
 
       applyMount()
+
+      // Call mount hook (same as mountTo does)
+      let _mountHookCleanup = null
+      if (mountHook) {
+        _mountHookCleanup = mountHook(el, {
+          send: instanceLoop.send,
+          get: instanceLoop.get,
+          registerResource: (n, h) => _instResources.set(n, h),
+          loop: instanceLoop
+        })
+      }
+
+      // Search for canvas AFTER innerHTML replacement (old canvas is destroyed)
+      if (frameMode === 'visual' && !_ctx2d) {
+        let canvas = el?.closest?.('canvas') || el?.parentElement?.closest?.('canvas')
+        if (!canvas && el?.ownerDocument) {
+          canvas = el.ownerDocument.querySelector('canvas')
+        }
+        if (canvas) {
+          _ctx2d = canvas.getContext('2d')
+          instanceLoop._canvasEl = canvas
+        }
+      }
+
       const unsub = instanceLoop.subscribe(() => {
         if (!frameMode) applyMount()
       })
@@ -355,6 +368,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       return () => {
         unsub()
         stopFrameLoop()
+        if (_mountHookCleanup) _mountHookCleanup()
         exec.unmount(el)
         _instResources.clear()
       }
