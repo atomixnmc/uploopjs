@@ -42,11 +42,11 @@ Runner decides HOW (when to render, what to cache, which frame lane).
 @uploop/router        Route updater (store-based)
 @uploop/css           Utility CSS engine (runtime, themable)
 @uploop/state-machine Finite state machine
+@uploop/sst           SSR, hydration, remote loops, services
 @uploop/devutils       HyperGraph Inspector, formatters
 
 Planned:
 @uploop/motion        Frame/spring animation
-@uploop/devtools      HyperGraph inspector
 ```
 
 ### Dependency Graph
@@ -58,6 +58,7 @@ core
   ├── router     ← navigation
   ├── css        ← styling (optional)
   ├── state-machine ← UI workflows
+  ├── sst        ← SSR, hydration, remote loops (depends on core + html)
   ├── devutils   ← developer tooling
 ```
 
@@ -368,8 +369,9 @@ Each layer is additive and degrades gracefully. The general loop always works. O
 | `@uploop/store` | 5 files | 212 | External store, selectors, derived state, persistence |
 | `@uploop/router` | 1 file | 209 | Store-based route updater |
 | `@uploop/state-machine` | 1 file | 153 | Finite state machine |
+| `@uploop/sst` | 5 files | ~250 | SSR, hydration, remote loops, FeathersJS-style services |
 | `@uploop/devutils` | 2 files | ~250 | HyperGraph Inspector, console formatters, tree/JSON output |
-| **Total** | **40 files** | **5,143** | |
+| **Total** | **45 files** | **~5,400** | |
 
 ---
 
@@ -377,6 +379,7 @@ Each layer is additive and degrades gracefully. The general loop always works. O
 
 - [Core Utilities](./design-core-utils.md) — uuid, path, clone, equals, serialize
 - [Component Props](./design-component-props.md) — props system with `:props`, PascalCase, dev-mode warnings
-- [Architecture Breakthrough](./progress/phase-v0.3-breakthrough.md) — graph engine, html system upgrade, execution breakthrough
+- [Server-Side Toolset](./design/design-server-side.md) — SSR, hydration, remote loops, services
+- [Architecture Breakthrough](./progress/report-v0.3-breakthrough.md) — graph engine, html system upgrade, execution breakthrough
 - [Current Progress](./progress/phase-v0.3-current-progress.md) — metrics, gaps, priorities, roadmap
 - [Getting Started](../docs/HOWTO.md) — syntax reference, comparison with React

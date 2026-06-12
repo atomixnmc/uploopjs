@@ -151,29 +151,53 @@
 
 > 📖 See [E2E-GUIDE.md](./E2E-GUIDE.md) for test patterns per example type.
 
-## v0.3.1 — Sugar Syntax & Cleanup 🔴
+## v0.3.1 — Sugar Syntax & Cleanup ✅
 
+- [x] C1: Extract `component()` internals (440 → 3 modules)
+- [x] C2: Remove `_pendingVC` DOM side-channel (WeakMap instead)
+- [x] Remove `data-force-update` dead code
+- [x] Remove `_validateTimer` from component state
+- [x] Fix `batch._depth` function properties (createBatcher factory)
+- [x] Snapshot protocol formalized (no _bindings/_send/_get smuggling)
+- [x] _ownerSend mutation removed
+- [x] Triple-fallback canvas search fixed
 - [ ] B1: String event shorthand `@click="inc"`
 - [ ] B4: Two-way binding `:model=`
 - [ ] B2+B3: Auto-extract for form inputs
 - [ ] B5: Simple setter shorthand
-- [ ] C1: Extract `component()` internals (378 → ~150 lines)
-- [ ] C2: Remove `_pendingVC` DOM side-channel
 - [ ] C3-L1: Runtime HTML validation in html tag
-- [ ] C3-L2: Lit-plugin docs + `.vscode/settings.json`
 
-## v0.4.0 — Architecture Breakthroughs 🔴
+## v0.4.0 — Architecture Breakthroughs ✅
 
-- [ ] G1-G4: Graph engine upgrade (tree ops, plan(), serialize)
-- [ ] H1-H5: HTML system upgrade (stable binding IDs, unified parser, template tree)
-- [ ] E1-E4: Execution breakthrough (template diffing, DOM patch, graph-driven render)
-- [ ] DOM `patch` strategy (O(changed) not O(full-tree))
-- [ ] `temperature` + `lifetime` data tiers
+- [x] G1-G4: Graph engine upgrade — plan(), whatReads/writes, transitiveDeps, criticalPath, findOrphans, mergeStats, diff, serialize/fromJSON, topologicalSort
+- [x] H1-H5: HTML system upgrade — single-pass character scanner (no regex), template parts, stable binding IDs
+- [x] E1-E4: Execution breakthrough — computeDelta(), patch strategy, createDOMPatchExecution(), runner upgrade
+- [x] DOM `patch` strategy (O(changed) not O(full-tree)) — 6.5× to 41× speedup
+- [x] `temperature` + `lifetime` data tiers — frame lane auto-selection
+- [x] onDataChange() — granular data node subscriptions
+- [x] events.rate/hot — event frequency tracking
+- [x] eventChain() — causal chain tracing (opt-in)
+- [x] inferTemperature() — heuristic data classification (opt-in)
+
+## v0.5.0 — Server-Side Toolset ✅
+
+- [x] `@uploop/sst` package — SSR, hydration, remote loops, services
+- [x] `renderToString()` — render components to HTML strings
+- [x] `hydrate()` — attach listeners to server-rendered DOM
+- [x] `createRemoteLoop()` — client proxy for remote state
+- [x] `createTransportServer()` — WebSocket server for local loops
+- [x] `createService()` — FeathersJS-style CRUD + real-time events
+- [x] `createServiceApp()` — multi-service registry
+- [x] Core: `createFrame('sync')` mode for SSR
+- [x] Core: `createStringExecution()` target
+- [x] Example: `examples/ssr/` — Node.js HTTP SSR server
+- [x] Docs: `design-server-side.md`, `progress-v0.5.md`, `report-v0.5-planning.md`
+- [x] Tests: 8 SST tests (SSR, hydration, services)
 
 ## Stats
 
-- **Packages:** 7 (@uploop/core, html, store, router, css, state-machine, devutils)
-- **Source files:** 45
-- **Examples:** 19
-- **Unit tests:** 181 passing + 1 skipped
-- **Test files:** 21
+- **Packages:** 8 (@uploop/core, html, store, router, css, state-machine, sst, devutils)
+- **Source files:** 55
+- **Examples:** 20
+- **Unit tests:** 228 passing + 2 skipped
+- **Test files:** 27

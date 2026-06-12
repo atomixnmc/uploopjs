@@ -12,8 +12,9 @@
 <p align="center">
   <a href="https://github.com/atomixnmc/uploopjs/actions/workflows/gh-pages.yml"><img src="https://github.com/atomixnmc/uploopjs/actions/workflows/gh-pages.yml/badge.svg" alt="Pages"></a>
   <a href="https://github.com/atomixnmc/uploopjs/actions/workflows/release.yml"><img src="https://github.com/atomixnmc/uploopjs/actions/workflows/release.yml/badge.svg" alt="Release"></a>
-  <a href="#"><img src="https://img.shields.io/badge/tests-192%20passed-brightgreen" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/tests-228%20passed-brightgreen" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/bundle-~26KB%20gzip-blue" alt="Size"></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-v0.5.0-orange" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
 </p>
 
@@ -57,7 +58,10 @@ Counter.mount(document.getElementById('root'))
 - **No JSX** — standard tagged template literals
 - **CSP-safe** — `@click` uses `addEventListener`, no inline `onclick`
 - **WebComponent native** — `defineElement()` produces custom elements
-- **7 packages** — core, html, store, router, css, state-machine, devutils — all sharing one update loop
+- **8 packages** — core, html, store, router, css, state-machine, sst, devutils — all sharing one update loop
+- **Server-side rendering** — `renderToString()` + `hydrate()` in `@uploop/sst`
+- **Remote loops** — `createRemoteLoop()` bridges client-server state over WebSocket
+- **Service layer** — FeathersJS-style CRUD + real-time events on graph data nodes
 
 ## Packages
 
