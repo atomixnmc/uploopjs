@@ -2,12 +2,13 @@
  * Create a frame scheduler.
  *
  * Frame types:
- * - micro:   sync, immediate execution
+ * - sync:    immediate flush, no scheduling (for SSR)
+ * - micro:   microtask-based, immediate execution
  * - visual:  requestAnimationFrame
  * - idle:    requestIdleCallback
  * - manual:  explicit flush only
  *
- * @param {'micro'|'visual'|'idle'|'manual'} mode
+ * @param {'sync'|'micro'|'visual'|'idle'|'manual'} mode
  * @returns {import('./types.js').Frame}
  */
 export function createFrame(mode = 'micro') {
@@ -26,6 +27,9 @@ export function createFrame(mode = 'micro') {
 
   function scheduleFlush() {
     switch (mode) {
+      case 'sync':
+        flush()  // immediate, no scheduling — for SSR
+        break
       case 'micro':
         // Use microtask for instant but non-blocking
         queueMicrotask(flush)

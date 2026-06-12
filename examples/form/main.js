@@ -306,6 +306,9 @@ function PasswordInput({ value, error, onInput }) {
 // If user types during VALIDATING, INPUT transitions back to 'dirty',
 // cancelling the validation flow (interruptible event pattern).
 // ════════════════════════════════════════════════════════════
+/** Timer handle kept outside state — pure lifecycle, not serializable data */
+let _formValidateTimer = null;
+
 const Form = component("Form", {
   state: {
     formData: { name: "", email: "", phone: "", password: "", city: "" },
@@ -328,8 +331,8 @@ const Form = component("Form", {
       formMachine.send("INPUT");
 
       // Deferred validation: sync formData into machine data, then VALIDATE
-      clearTimeout(s._validateTimer);
-      const timer = setTimeout(() => {
+      clearTimeout(_formValidateTimer);
+      _formValidateTimer = setTimeout(() => {
         // Push current form data into state machine via set()
         const m = formMachine.get();
         formMachine.set({ data: { ...m.data, ...formData } });
@@ -347,7 +350,6 @@ const Form = component("Form", {
       return {
         formData,
         errors,
-        _validateTimer: timer,
         stateLabel: formMachine.value,
         previousState: formMachine.data.prev,
       };

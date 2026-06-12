@@ -312,10 +312,8 @@ Events: ${searchLoop.events.total} total, ${searchLoop.events
   },
 
   mount: (el) => {
-    const unsub = searchLoop.subscribe(() => {
-      el.setAttribute?.("data-force-update", Math.random());
-    });
-    return () => unsub();
+    // State changes flow through searchLoop.get() in view — no manual attribute needed
+    return () => {};
   },
 });
 

@@ -109,6 +109,19 @@ export function createDOMExecution() {
       target.innerHTML = output
     },
 
+    patch(target, prevOutput, nextOutput, delta) {
+      // Apply patch instructions from delta
+      if (delta?.parts) {
+        for (const part of delta.parts) {
+          if (part.type === 'text' && part.node) {
+            part.node.textContent = String(part.value ?? '')
+          } else if (part.type === 'prop' && part.node) {
+            part.node[part.name] = part.value
+          }
+        }
+      }
+    },
+
     mount(target, output) {
       if (output) target.innerHTML = output
       return () => { target.innerHTML = '' }
@@ -164,6 +177,48 @@ export function createDOMExecution() {
 }
 
 /**
+ * Create an SSR execution target that renders to strings.
+ *
+ * Uses strategy: 'replace' with a plain object as target.
+ * Output is accumulated on `target._html` instead of DOM.
+ *
+ * @returns {import('./types.js').ExecutionTarget}
+ */
+export function createStringExecution() {
+  return {
+    strategy: 'replace',
+
+    render(template, state) {
+      if (typeof template === 'string') return template
+      if (template && typeof template.toString === 'function') return template.toString()
+      return String(template)
+    },
+
+    replace(target, output) {
+      target._html = output
+    },
+
+    mount(target, output) {
+      if (output) target._html = output
+      return () => { target._html = '' }
+    },
+
+    unmount(target) {
+      target._html = ''
+    },
+
+    hooks: {
+      preReplace(target) {
+        return {}
+      },
+      postReplace(target, snapshot) {
+        // No focus restore needed on server
+      }
+    }
+  }
+}
+
+/**
  * Validate that a target object conforms to the execution protocol.
  * Logs warnings for missing required methods.
  *
@@ -203,6 +258,36 @@ export function validateExecutionTarget(target, label = 'execution target') {
  * @param {Function} options.onReplace — called after replace
  * @returns {Object} runner
  */
+/**
+ * Compute delta between previous and next template outputs.
+ * Compares parts by ID to find changed text/prop/bool values.
+ *
+ * @param {Object|string} prevOutput
+ * @param {Object|string} nextOutput
+ * @returns {Object|null} delta { parts: [...] } or null if no changes
+ */
+function computeDelta(prevOutput, nextOutput) {
+  // If outputs are template results with parts, diff the parts
+  const prevParts = prevOutput?.parts || []
+  const nextParts = nextOutput?.parts || []
+  const changed = []
+
+  const prevById = {}
+  for (const p of prevParts) prevById[p.id] = p
+
+  for (const p of nextParts) {
+    const prev = prevById[p.id]
+    if (!prev) continue
+    if (p.type === 'text' && prev.value !== p.value) {
+      changed.push(p)
+    } else if ((p.type === 'prop' || p.type === 'bool') && prev.value !== p.value) {
+      changed.push(p)
+    }
+  }
+
+  return changed.length > 0 ? { parts: changed } : null
+}
+
 export function createRunner(execution, options = {}) {
   let _prevOutput = null
   let _target = null
@@ -226,8 +311,11 @@ export function createRunner(execution, options = {}) {
     if (options.onRender) options.onRender(_target, nextOutput)
 
     if (execution.strategy === 'patch' && execution.patch) {
-      const delta = null // TODO: compute delta from prev/next output
-      execution.patch(_target, _prevOutput, nextOutput, delta)
+      // Compute delta from old and new template outputs
+      const delta = computeDelta(_prevOutput, nextOutput)
+      if (delta) {
+        execution.patch(_target, _prevOutput, nextOutput, delta)
+      }
       if (options.onPatch) options.onPatch(_target, delta)
     } else if (execution.strategy === 'redraw' || execution.strategy === 'replace') {
       const snapshot = execution.hooks?.preReplace?.(_target)

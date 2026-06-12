@@ -9,18 +9,56 @@
 import { component as coreComponent, createComponentType as coreCreateComponentType } from '@uploop/core'
 import { html, applyBindings, componentTag, processUploopAttributes, processVirtualContainers, consumeContext, resolveScope } from './html.js'
 import { createDOMExecution } from '@uploop/core'
+import { createDOMPatchExecution } from './dom-execution.js'
 
 /**
  * Create a DOM execution target wired with component-specific context.
  * Context (scope, consume, find) is rebuilt each render from the target element.
+ *
+ * @param {Object} loop — component loop { send, get }
+ * @param {Object} resources — resource registry { save, restore, register }
+ * @param {Object} [options]
+ * @param {'replace'|'patch'} [options.strategy='replace']
+ * @returns {Object} ExecutionTarget-compatible object
  */
-function createWiredDOMExecution(loop, resources) {
+function createWiredDOMExecution(loop, resources, options = {}) {
+  const strategy = options.strategy || 'replace'
+
+  if (strategy === 'patch') {
+    const domCtx = {
+      send: loop.send,
+      get: loop.get,
+      ctx: {
+        send: loop.send,
+        get: loop.get,
+        registerResource: (name, handlers) => resources.register(name, handlers),
+        find: null,
+        consume: null,
+        scope: null
+      },
+      saveResources: () => resources.save(),
+      restoreResources: (target, snap) => resources.restore(snap, target)
+    }
+    const exec = createDOMPatchExecution(domCtx)
+    return {
+      strategy: exec.strategy,
+      render: exec.render,
+      replace: exec.replace,
+      patch: exec.patch,
+      mount: exec.mount,
+      unmount: exec.unmount,
+      hooks: exec.hooks
+    }
+  }
+
+  // Replace strategy: use base DOM execution (no full — avoids double-processing)
   const base = createDOMExecution()
 
   return {
     strategy: base.strategy,
     render: base.render,
     replace: base.replace,
+    patch: base.patch,
     mount: base.mount,
     unmount: base.unmount,
 
@@ -28,7 +66,7 @@ function createWiredDOMExecution(loop, resources) {
       preReplace(target) {
         const snapshot = base.hooks.preReplace(target)
         if (resources.save) {
-          snapshot._resources = resources.save()
+          snapshot.resources = resources.save()
         }
         return snapshot
       },
@@ -45,16 +83,18 @@ function createWiredDOMExecution(loop, resources) {
           scope: (n, tag) => resolveScope(n, tag)
         }
 
-        if (snapshot._bindings && snapshot._bindings.length > 0) {
-          const send = snapshot._send || loop.send
-          const get = snapshot._get || (() => loop.get())
-          applyBindings(target, snapshot._bindings, send, get())
+        if (snapshot.bindings && snapshot.bindings.length > 0) {
+          const childSend = snapshot.send || loop.send
+          const get = snapshot.get || (() => loop.get())
+          // Use snapshot.send (instance loop) over loop.send (template loop)
+          // because core's create() reuses the template exec for instances.
+          applyBindings(target, snapshot.bindings, childSend, get(), childSend)
         }
 
         const pendingVC = processUploopAttributes(target, ctx)
 
-        if (resources.restore && snapshot._resources) {
-          resources.restore(snapshot._resources, target)
+        if (resources.restore && snapshot.resources) {
+          resources.restore(snapshot.resources, target)
         }
 
         processVirtualContainers(target, ctx, pendingVC)

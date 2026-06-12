@@ -3,10 +3,10 @@ export { createGraph } from './graph.js'
 export { createSignal } from './signal.js'
 export { createFrame } from './frame.js'
 export { createEffectSystem } from './effect.js'
-export { batch } from './batch.js'
+export { batch, createBatcher } from './batch.js'
 export { createScope } from './scope.js'
 export { use } from './plugin.js'
-export { createDOMExecution, validateExecutionTarget, createRunner } from './execution.js'
+export { createDOMExecution, createStringExecution, validateExecutionTarget, createRunner } from './execution.js'
 export { component, createComponentType } from './component.js'
 
 // Utilities

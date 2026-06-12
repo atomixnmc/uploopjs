@@ -100,7 +100,7 @@ describe('component', () => {
 
     expect(postReplace).toHaveBeenCalledTimes(1)
     const snapshot = postReplace.mock.calls[0][1]
-    expect(snapshot._bindings).toEqual([{ type: 'event', name: 'click', value: expect.any(Function) }])
+    expect(snapshot.bindings).toEqual([{ type: 'event', name: 'click', value: expect.any(Function) }])
     expect(snapshot.focus).toBe('saved')
   })
 

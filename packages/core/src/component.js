@@ -22,6 +22,28 @@
 
 import { createLoop } from './loop.js'
 import { createSignal } from './signal.js'
+import { createResourceManager } from './component-resources.js'
+import { createFrameLoop } from './component-frame.js'
+
+// ─── Snapshot Protocol ───────────────────────────────────────
+// Typed container for data passed between preReplace and postReplace hooks.
+// Execution targets read/write these fields; no underscore smuggling.
+
+/**
+ * Create a typed snapshot for the execution pipeline.
+ * @param {Object} [overrides]
+ * @returns {Snapshot}
+ */
+function createSnapshot(overrides = {}) {
+  return {
+    focus: null,
+    bindings: [],
+    send: null,
+    get: null,
+    resources: null,
+    ...overrides
+  }
+}
 
 /**
  * Define an Uploop HyperGraph component.
@@ -97,33 +119,8 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     loop.registerEdge(key, 'view')
   }
 
-  // ─── Persistent Resources ───────────────────────────────
-  // Resource lifecycle: register → save before replace → restore after replace.
-  // Execution targets that do strategy:'patch' never call save/restore.
-  const _resources = new Map()
-
-  function registerResource(name, handlers) {
-    if (!_resources.has(name)) _resources.set(name, handlers)
-  }
-
-  function saveResources() {
-    const snap = new Map()
-    for (const [name, h] of _resources) {
-      if (h.save) {
-        try { snap.set(name, h.save()) } catch (e) {}
-      }
-    }
-    return snap
-  }
-
-  function restoreResources(snap, root) {
-    if (!snap) return
-    for (const [name, h] of _resources) {
-      if (h.restore && snap.has(name)) {
-        try { h.restore(snap.get(name), root) } catch (e) {}
-      }
-    }
-  }
+  // ─── Resource Manager ──────────────────────────────────────
+  const resources = createResourceManager()
 
   // ─── Render ──────────────────────────────────────────────
 
@@ -161,12 +158,11 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       }
 
       // Execution pipeline: preReplace → replace → postReplace
-      const snapshot = exec.hooks?.preReplace?.(element) ?? {}
+      const baseSnapshot = exec.hooks?.preReplace?.(element) ?? {}
+      const snapshot = createSnapshot({ ...baseSnapshot, bindings })
 
       exec.replace(element, htmlStr)
 
-      // Pass bindings + resources through snapshot to postReplace
-      snapshot._bindings = bindings
       if (exec.hooks?.postReplace) {
         exec.hooks.postReplace(element, snapshot)
       }
@@ -177,15 +173,15 @@ export function component(name, config = {}, lifecycleMethods = {}) {
 
     const unsubscribe = loop.subscribe(() => { apply() })
 
-    if (mountHook) mountHook(element, { send: loop.send, get: loop.get, registerResource })
+    if (mountHook) mountHook(element, { send: loop.send, get: loop.get, registerResource: resources.register })
     element.setAttribute?.('data-up-component', name)
 
     return () => {
       unsubscribe()
-      if (unmountHook) unmountHook(element, { send: loop.send, get: loop.get, registerResource })
+      if (unmountHook) unmountHook(element, { send: loop.send, get: loop.get, registerResource: resources.register })
       element.removeAttribute?.('data-up-component')
       exec.unmount(element)
-      _resources.clear()
+      resources.clear()
     }
   }
 
@@ -245,58 +241,11 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       })
     }
 
-    // Frame timing (rAF) for visual/draw components
-    let _animId = null
-    let _startTime = 0
-    let _lastTime = 0
-    let _ctx2d = null
+    // ─── Frame Loop ─────────────────────────────────────
+    const frameLoop = createFrameLoop(frameMode, lifecycleMethods, drawFn, renderFn, instanceLoop, cleanChildren, name)
 
-    function startFrameLoop(el) {
-      if (frameMode === 'visual') {
-        if (!_ctx2d && el) {
-          let canvas = el?.closest?.('canvas') || el?.parentElement?.closest?.('canvas')
-          if (!canvas && el?.ownerDocument) {
-            canvas = el.ownerDocument.querySelector('canvas')
-          }
-          if (canvas) {
-            _ctx2d = canvas.getContext('2d')
-            instanceLoop._canvasEl = canvas
-          }
-        }
-
-        _startTime = performance.now()
-        _lastTime = _startTime
-
-        function tick() {
-          const now = performance.now()
-          const elapsed = now - _startTime
-          const delta = now - _lastTime
-          _lastTime = now
-
-          instanceLoop.set({ elapsed, delta })
-
-          const drawHandler = lifecycleMethods.draw || drawFn || renderFn
-          if (typeof drawHandler === 'function' && _ctx2d) {
-            try {
-              drawHandler(_ctx2d, instanceLoop.get(), cleanChildren, { elapsed, delta })
-            } catch (e) { console.error(`[Uploop] draw error in "${name}":`, e) }
-          }
-
-          _animId = requestAnimationFrame(tick)
-        }
-        _animId = requestAnimationFrame(tick)
-      }
-    }
-
-    function stopFrameLoop() {
-      if (_animId != null) {
-        cancelAnimationFrame(_animId)
-        _animId = null
-      }
-    }
-
-    if (frameMode && !_animId) {
-      startFrameLoop(null)
+    if (frameMode && !frameLoop.active) {
+      frameLoop.start(null)
     }
 
     const _instResources = new Map()
@@ -313,16 +262,21 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         const result = doRender()
         if (!result || !el) return
 
-        const snapshot = exec.hooks?.preReplace?.(el) ?? {}
+        const baseSnapshot = exec.hooks?.preReplace?.(el) ?? {}
+        let snapshot
 
         let htmlStr
         if (result && typeof result === 'object') {
           htmlStr = result.toString?.() ?? String(result)
-          snapshot._bindings = result.bindings || []
-          snapshot._send = instanceLoop.send
-          snapshot._get = instanceLoop.get
+          snapshot = createSnapshot({
+            ...baseSnapshot,
+            bindings: result.bindings || [],
+            send: instanceLoop.send,
+            get: instanceLoop.get
+          })
         } else {
           htmlStr = String(result)
+          snapshot = createSnapshot(baseSnapshot)
         }
 
         if (exec.replace) exec.replace(el, htmlStr); else el.innerHTML = htmlStr
@@ -332,8 +286,19 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         }
       }
 
-      if (frameMode && !_animId) {
-        startFrameLoop(el)
+      // Find canvas for visual mode: mount element IS the canvas or contains one
+      if (frameMode === 'visual' && !frameLoop.active) {
+        let canvasEl = null
+        if (el.tagName === 'CANVAS') {
+          canvasEl = el
+        } else {
+          canvasEl = el.querySelector?.('canvas')
+        }
+        if (canvasEl) {
+          frameLoop.start(canvasEl)
+        } else {
+          console.warn(`[Uploop] frameMode "visual" but mount element is not a canvas and contains no canvas. Skipping visual mode.`)
+        }
       }
 
       applyMount()
@@ -349,25 +314,13 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         })
       }
 
-      // Search for canvas AFTER innerHTML replacement (old canvas is destroyed)
-      if (frameMode === 'visual' && !_ctx2d) {
-        let canvas = el?.closest?.('canvas') || el?.parentElement?.closest?.('canvas')
-        if (!canvas && el?.ownerDocument) {
-          canvas = el.ownerDocument.querySelector('canvas')
-        }
-        if (canvas) {
-          _ctx2d = canvas.getContext('2d')
-          instanceLoop._canvasEl = canvas
-        }
-      }
-
       const unsub = instanceLoop.subscribe(() => {
         if (!frameMode) applyMount()
       })
 
       return () => {
         unsub()
-        stopFrameLoop()
+        frameLoop.stop()
         if (_mountHookCleanup) _mountHookCleanup()
         exec.unmount(el)
         _instResources.clear()
@@ -390,10 +343,10 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       describe: instanceLoop.describe,
       registerResource: (n, h) => _instResources.set(n, h),
       children: cleanChildren,
-      set ctx2d(v) { _ctx2d = v },
-      get ctx2d() { return _ctx2d },
-      startFrameLoop,
-      stopFrameLoop
+      get ctx2d() { return frameLoop.ctx2d },
+      set ctx2d(v) { frameLoop.ctx2d = v },
+      startFrameLoop: frameLoop.start,
+      stopFrameLoop: frameLoop.stop
     }
 
     for (const [key, fn] of Object.entries(lifecycleMethods)) {
@@ -414,11 +367,8 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     const s = loop.get()
     if (typeof view === 'function') {
       const result = view(s, { send: loop.send })
-      if (result && result.bindings) {
-        for (const b of result.bindings) {
-          if (!b._ownerSend) b._ownerSend = loop.send
-        }
-      }
+      // Note: Owner send is no longer mutated onto binding objects.
+      // Owners are resolved via the ownerSend parameter to applyBindings().
       return result || ''
     }
     return view || ''
@@ -432,7 +382,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
   callable.describe = loop.describe
   callable.registerNode = loop.registerNode
   callable.registerEdge = loop.registerEdge
-  callable.registerResource = registerResource
+  callable.registerResource = resources.register
   callable._updateHandlers = updateHandlers
   callable._initialState = initialState
   if (config._cycleMethods) callable._cycleMethods = config._cycleMethods

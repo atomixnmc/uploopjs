@@ -296,10 +296,7 @@ Error: ${router.error || "none"}</pre
 
   mount: (el) => {
     const unsub = router.subscribe(() => {
-      // Re-render parent on route change
-      const s = router.get();
-      el.querySelector?.("#router-outlet")?.innerHTML ||
-        el.setAttribute?.("data-force-update", Math.random());
+      // Re-render parent on route change — router.get() in view handles state
     });
     return () => unsub();
   },

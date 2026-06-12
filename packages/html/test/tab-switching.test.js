@@ -39,16 +39,16 @@ function wrapComponent(name, config) {
     hooks: {
       preReplace(target) {
         const snap = base.hooks.preReplace(target)
-        snap._resources = resources.save()
+        snap.resources = resources.save()
         return snap
       },
       postReplace(target, snap = {}) {
         base.hooks.postReplace(target, snap)
-        if (snap._bindings?.length > 0) {
-          applyBindings(target, snap._bindings, () => {}, {})
+        if (snap.bindings?.length > 0) {
+          applyBindings(target, snap.bindings, () => {}, {})
         }
-        if (resources.restore && snap._resources) {
-          resources.restore(snap._resources, target)
+        if (resources.restore && snap.resources) {
+          resources.restore(snap.resources, target)
         }
       }
     }

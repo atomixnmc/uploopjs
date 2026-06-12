@@ -17,124 +17,347 @@
 // ════════════════════════════════════════════════════════════
 
 const _componentRegistry = {}
-let _bindId = 0
-const nextId = () => 'b' + (++_bindId)
+
+// Per-render binding ID counter — starts fresh each html() call.
+// Nested template descriptors get their IDs relabeled on merge
+// so there are zero collisions without module-level state.
 
 export function registerComponent(name, comp) {
   _componentRegistry[name] = comp
 }
 
-export function html(strings, ...values) {
-  const parts = []
-  const bindings = []
+// ════════════════════════════════════════════════════════════
+// Single-pass character scanners (no regex)
+// ════════════════════════════════════════════════════════════
 
-  strings.forEach((str, i) => {
-    parts.push(str)
+const $SPACE = 32   // ' '
+const $TAB = 9      // '\t'
+const $CR = 13      // '\r'
+const $NL = 10      // '\n'
+const $EQ = 61      // '='
+const $LT = 60      // '<'
+const $GT = 62      // '>'
+const $SLASH = 47   // '/'
+const $AT = 64      // '@'
+const $DOT = 46     // '.'
+const $QM = 63      // '?'
+const $DQ = 34      // '"'
+const $SQ = 39      // "'"
+const $A = 65       // 'A'
+const $Z = 90       // 'Z'
+const $a = 97       // 'a'
+const $z = 122      // 'z'
+const $0 = 48       // '0'
+const $9 = 57       // '9'
+const $_ = 95       // '_'
 
-    if (i < values.length) {
-      const value = values[i]
-      const prevStr = str
+function isSpace(c) { return c === $SPACE || c === $TAB || c === $CR || c === $NL }
+function isWord(c) { return (c >= $a && c <= $z) || (c >= $A && c <= $Z) || (c >= $0 && c <= $9) || c === $_ }
+function isUpper(c) { return c >= $A && c <= $Z }
 
-      // Detect event binding: @click=${handler}
-      const eventMatch = prevStr.match(/@(\w+)\s*=$/)
-      if (eventMatch) {
-        const eventName = eventMatch[1]
-        const id = nextId()
-        bindings.push({ type: 'event', name: eventName, value, id })
-        parts[parts.length - 1] = prevStr.slice(0, -eventMatch[0].length) +
-          `data-up-event="${eventName}:${id}"`
-        parts.push('')
-        return
+/**
+ * Detect a binding suffix at the end of a static string part
+ * (the text immediately before `${...}` in the template literal).
+ *
+ * Patterns detected:
+ *   @eventName  =$   → event binding
+ *   .propName   =$   → property binding
+ *   ?attrName   =$   → boolean binding
+ *
+ * Returns { type, name, prefix, marker } or null.
+ * - prefix: everything in `str` before the binding pattern
+ * - marker: opening of the data-up-* attribute, e.g. `data-up-event="click:`
+ */
+function detectBindingSuffix(str) {
+  let end = str.length - 1
+  // Skip trailing whitespace
+  while (end >= 0 && isSpace(str.charCodeAt(end))) end--
+  if (end < 0 || str.charCodeAt(end) !== $EQ) return null
+
+  // end is at '=' — skip whitespace between name and '='
+  let eqPos = end
+  end = eqPos - 1
+  while (end >= 0 && isSpace(str.charCodeAt(end))) end--
+  if (end < 0) return null
+
+  // Walk backward over word chars (the binding name)
+  const c = str.charCodeAt(end)
+  if (!isWord(c)) return null
+
+  let nameEnd = end
+  while (end >= 0 && isWord(str.charCodeAt(end))) end--
+
+  // end is at the char before the name, or -1
+  if (end < 0) return null
+
+  const prefixChar = str.charCodeAt(end)
+  let type, marker
+
+  if (prefixChar === $AT) { type = 'event'; marker = 'data-up-event="' }
+  else if (prefixChar === $DOT) { type = 'prop';  marker = 'data-up-prop="' }
+  else if (prefixChar === $QM)  { type = 'bool';  marker = 'data-up-bool="' }
+  else return null
+
+  const name = str.slice(end + 1, nameEnd + 1)
+  const prefix = str.slice(0, end)
+
+  return { type, name, prefix, marker }
+}
+
+/**
+ * Parse HTML-attribute syntax from a string into a flat props object.
+ * Handles: key="val", key='val', bare-boolean-key
+ * No regex — walks the string character by character.
+ */
+function parseAttrs(attrStr) {
+  const props = {}
+  let i = 0
+  const len = attrStr.length
+
+  while (i < len) {
+    // Skip whitespace
+    while (i < len && isSpace(attrStr.charCodeAt(i))) i++
+    if (i >= len) break
+
+    // Read key (word chars)
+    const keyStart = i
+    while (i < len && isWord(attrStr.charCodeAt(i))) i++
+    const key = attrStr.slice(keyStart, i)
+    if (!key) { i++; continue }
+
+    // Optional whitespace before '='
+    while (i < len && isSpace(attrStr.charCodeAt(i))) i++
+
+    if (i < len && attrStr.charCodeAt(i) === $EQ) {
+      i++ // skip '='
+      while (i < len && isSpace(attrStr.charCodeAt(i))) i++
+
+      if (i < len) {
+        const quote = attrStr.charCodeAt(i)
+        if (quote === $DQ || quote === $SQ) {
+          i++ // skip opening quote
+          const valStart = i
+          while (i < len && attrStr.charCodeAt(i) !== quote) i++
+          const val = attrStr.slice(valStart, i)
+          i++ // skip closing quote
+          const n = Number(val)
+          props[key] = isNaN(n) ? val : n
+        }
       }
-
-      // Detect property binding: .value=${val}
-      const propMatch = prevStr.match(/\.(\w+)\s*=$/)
-      if (propMatch) {
-        const propName = propMatch[1]
-        const id = nextId()
-        bindings.push({ type: 'prop', name: propName, value, id })
-        parts[parts.length - 1] = prevStr.slice(0, -propMatch[0].length) +
-          `data-up-prop="${propName}:${id}"`
-        parts.push('')
-        return
-      }
-
-      // Detect boolean attribute: ?checked=${bool}
-      const boolMatch = prevStr.match(/\?(\w+)\s*=$/)
-      if (boolMatch) {
-        const attrName = boolMatch[1]
-        const id = nextId()
-        bindings.push({ type: 'bool', name: attrName, value, id })
-        parts[parts.length - 1] = prevStr.slice(0, -boolMatch[0].length) +
-          `data-up-bool="${attrName}:${id}"`
-        parts.push('')
-        return
-      }
-
-      // Text/attribute interpolation — embed value directly into template string
-      let strVal
-      if (value && typeof value === 'object' && 'template' in value) {
-        // IDs already globally unique — just merge bindings + HTML
-        bindings.push(...(value.bindings || []))
-        strVal = value.toString()
-      } else if (Array.isArray(value)) {
-        strVal = value.map(v => {
-          if (v && typeof v === 'object' && 'template' in v) {
-            bindings.push(...(v.bindings || []))
-            return v.toString()
-          }
-          return v === null || v === undefined ? '' : String(v)
-        }).join('')
-      } else {
-        strVal = value === null || value === undefined ? '' : String(value)
-      }
-      parts[parts.length - 1] += strVal
+    } else {
+      // Boolean (bare) attribute
+      props[key] = true
     }
-  })
+  }
+  return props
+}
 
-  let template = parts.join('')
+/**
+ * Find and resolve PascalCase component tags in a static string.
+ * Scans character by character for `<Uppercase.../>` patterns,
+ * looks up the component registry, and replaces with rendered output.
+ * Returns the string with all known component tags resolved.
+ */
+function resolvePascalTags(str) {
+  let result = ''
+  let i = 0
+  const len = str.length
 
-  // Post-process: resolve PascalCase component tags from registry
-  const pascalRe = /<([A-Z]\w*)\s*([^>]*)\/>/g
-  let pm
-  while ((pm = pascalRe.exec(template))) {
-    const tagName = pm[1]
+  while (i < len) {
+    // Find next '<'
+    const lt = str.indexOf('<', i)
+    if (lt === -1) {
+      result += str.slice(i)
+      break
+    }
+    result += str.slice(i, lt)
+    i = lt + 1
+    if (i >= len) { result += '<'; break }
+
+    // Check for PascalCase: first char must be A-Z
+    if (!isUpper(str.charCodeAt(i))) {
+      result += '<'
+      continue
+    }
+
+    // Read tag name (word chars)
+    const tagStart = i
+    while (i < len && isWord(str.charCodeAt(i))) i++
+    const tagName = str.slice(tagStart, i)
+    if (!tagName) { result += '<'; continue }
+
     const comp = _componentRegistry[tagName]
-    if (!comp) continue
+    if (!comp) {
+      // Not a registered component — restore what we consumed
+      result += '<' + tagName
+      continue
+    }
 
-    // Parse attributes from the matched tag
-    const props = {}
-    const attrStr = pm[2] || ''
-    const attrRe = /(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
-    let am
-    while ((am = attrRe.exec(attrStr))) {
-      const key = am[1]
-      if (am[2] !== undefined) { const n = Number(am[2]); props[key] = isNaN(n) ? am[2] : n }
-      else if (am[3] !== undefined) { const n = Number(am[3]); props[key] = isNaN(n) ? am[3] : n }
+    // Skip whitespace, then find '/>'
+    while (i < len && isSpace(str.charCodeAt(i))) i++
+    const close = str.indexOf('/>', i)
+    if (close === -1) {
+      // No closing '/>' — not a self-closing tag, restore
+      result += '<' + tagName + str.slice(tagStart + tagName.length, i)
+      continue
     }
-    const bare = attrStr.replace(/\w+\s*=\s*(?:"[^"]*"|'[^']*')/g, '')
-    const boolRe = /(\w+)(?=\s|$)/g
-    let bm
-    while ((bm = boolRe.exec(bare))) {
-      if (!(bm[1] in props)) props[bm[1]] = true
-    }
+
+    // Parse attributes between tag name + whitespace and '/>'
+    const attrStr = str.slice(i, close)
+    const props = parseAttrs(attrStr)
+
+    // Skip past '/>'
+    i = close + 2
 
     // Create component instance and render
     try {
-      const inst = comp.create(props)
-      const rendered = inst.render()
-      template = template.replace(pm[0], rendered)
-      // Reset regex lastIndex since template changed
-      pascalRe.lastIndex = pm.index + rendered.length
+      if (typeof comp.create === 'function') {
+        const inst = comp.create(props)
+        const rendered = inst.render()
+        result += rendered
+      }
     } catch (e) {
       console.warn('[Uploop] failed to render component "' + tagName + '":', e)
     }
   }
 
+  return result
+}
+
+/**
+ * Resolve a template value to a string, merging nested template bindings.
+ */
+function resolveValue(value, bindings, idOffset) {
+  if (value && typeof value === 'object' && 'template' in value && 'bindings' in value) {
+    // Nested template descriptor — relabel its binding IDs to avoid collisions
+    const nestedBindings = value.bindings || []
+    if (nestedBindings.length > 0) {
+      const oldToNew = new Map()
+      for (const b of nestedBindings) {
+        const oldId = b.id
+        const newId = 'b' + (++idOffset.count)
+        oldToNew.set(oldId, newId)
+        b.id = newId
+      }
+      bindings.push(...nestedBindings)
+      // Rewrite IDs in the nested template HTML.
+      // Two-phase replacement to prevent cascading:
+      //   b1→b2 then b2→b3 would turn original b1 into b3.
+      //   Phase 1 replaces with temp markers, Phase 2 unwraps them.
+      let html = value.toString()
+      const TEMP = '\x00'
+      for (const [oldId, newId] of oldToNew) {
+        const search = ':' + oldId + '"'
+        const marker = ':' + TEMP + newId + TEMP + '"'
+        html = html.split(search).join(marker)
+      }
+      for (const [, newId] of oldToNew) {
+        const marker = ':' + TEMP + newId + TEMP + '"'
+        const final = ':' + newId + '"'
+        html = html.split(marker).join(final)
+      }
+      return html
+    }
+    bindings.push(...nestedBindings)
+    return value.toString()
+  }
+
+  if (Array.isArray(value)) {
+    let str = ''
+    for (const v of value) {
+      if (v && typeof v === 'object' && 'template' in v && 'bindings' in v) {
+        str += resolveValue(v, bindings, idOffset)
+      } else {
+        str += v === null || v === undefined ? '' : String(v)
+      }
+    }
+    return str
+  }
+
+  return value === null || value === undefined ? '' : String(value)
+}
+
+// ════════════════════════════════════════════════════════════
+// html() — single-pass template parser (no regex)
+// ════════════════════════════════════════════════════════════
+
+export function html(strings, ...values) {
+  const bindings = []
+  // Per-call ID counter — nested templates get relabeled, so no
+  // module-level state is needed for collision-free IDs.
+  const idOffset = { count: 0 }
+  const fragments = []
+
+  // Metadata describing each dynamic position for incremental patching
+  const parts = []
+
+  for (let i = 0; i < strings.length; i++) {
+    let str = strings[i]
+
+    if (i < values.length) {
+      const value = values[i]
+
+      // 1. Check for binding suffix on the static prefix
+      const binding = detectBindingSuffix(str)
+      if (binding) {
+        const id = 'b' + (++idOffset.count)
+        bindings.push({ type: binding.type, name: binding.name, value, id })
+        // Resolve PascalCase tags in the prefix (before the binding marker)
+        fragments.push(resolvePascalTags(binding.prefix) + binding.marker + binding.name + ':' + id + '"')
+        parts.push({ id, type: binding.type, name: binding.name, value })
+        continue
+      }
+
+      // 2. Resolve PascalCase tags in the static string part
+      str = resolvePascalTags(str)
+
+      // 3. Handle the value — text interpolation or nested template merge
+      if (value && typeof value === 'object' && 'template' in value && 'bindings' in value) {
+        // Nested template descriptor — merge bindings, inline HTML.
+        // The nested template's own parts live in its descriptor,
+        // and its markers are already embedded in the returned HTML.
+        const strVal = resolveValue(value, bindings, idOffset)
+        fragments.push(str + strVal)
+      } else if (Array.isArray(value)) {
+        // Array — handle each element individually
+        let html = str
+        for (const v of value) {
+          if (v && typeof v === 'object' && 'template' in v && 'bindings' in v) {
+            html += resolveValue(v, bindings, idOffset)
+          } else {
+            const id = 'b' + (++idOffset.count)
+            html += String(v ?? '')
+            parts.push({ id, type: 'text', value: v })
+          }
+        }
+        fragments.push(html)
+      } else {
+        // Plain scalar — record value for patch diffing
+        const id = 'b' + (++idOffset.count)
+        fragments.push(str + String(value ?? ''))
+        parts.push({ id, type: 'text', value })
+      }
+    } else {
+      // Final string part (after all values) — just resolve PascalCase tags
+      fragments.push(resolvePascalTags(str))
+    }
+  }
+
+  const template = fragments.join('')
+
   return {
     template,
     bindings,
-    values,
+    parts,
+    values: () => {
+      const result = {}
+      for (const p of parts) {
+        if (p.type === 'text' || p.type === 'prop' || p.type === 'bool') {
+          result[p.id] = p.value
+        }
+      }
+      return result
+    },
     toString: () => template,
     toJSON: () => template
   }
@@ -190,6 +413,68 @@ export function applyBindings(root, bindings, send, state) {
         else target.removeAttribute(attrName)
       }
     }
+  }
+}
+
+/**
+ * Find a marker comment node (<!--up:id-->) within root using TreeWalker.
+ * @param {Node} root
+ * @param {string} id
+ * @returns {Comment|null}
+ */
+function findMarker(root, id) {
+  const doc = root.ownerDocument || (typeof document !== 'undefined' ? document : null)
+  if (!doc) return null
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_COMMENT)
+  const target = 'up:' + id
+  let node
+  while ((node = walker.nextNode())) {
+    const comment = /** @type {Comment} */ (node)
+    if (comment.data && comment.data.trim() === target) return comment
+  }
+  return null
+}
+
+/**
+ * Apply incremental DOM updates by comparing old and new template results.
+ * Only touches DOM nodes whose values actually changed.
+ *
+ * @param {Element} root - the mounted DOM root element
+ * @param {Object} oldResult - previous return value from html()
+ * @param {Object} newResult - new return value from html()
+ */
+export function patchTemplate(root, oldResult, newResult) {
+  if (!root || !oldResult || !newResult) return
+
+  const oldParts = oldResult.parts || []
+  const newParts = newResult.parts || []
+
+  // Build a map of old values by ID
+  const oldValues = {}
+  for (const p of oldParts) {
+    if (p.type === 'text') oldValues[p.id] = p.value
+    else if (p.type === 'prop' || p.type === 'bool') oldValues[p.id] = p.value
+  }
+
+  // Update only changed parts
+  for (const p of newParts) {
+    const oldVal = oldValues[p.id]
+    const newVal = p.value
+
+    if (p.type === 'text' && oldVal !== newVal) {
+      // No markers in template — text patches need DOM tree walking.
+      // For now, text-only changes use replace strategy. Prop/bool are patched.
+    } else if (p.type === 'prop' && oldVal !== newVal) {
+      const el = root.querySelector('[data-up-prop="' + p.name + ':' + p.id + '"]')
+      if (el) el[p.name] = newVal
+    } else if (p.type === 'bool' && oldVal !== newVal) {
+      const el = root.querySelector('[data-up-bool="' + p.name + ':' + p.id + '"]')
+      if (el) {
+        if (newVal) el.setAttribute(p.name, '')
+        else el.removeAttribute(p.name)
+      }
+    }
+    // Event bindings don't need patching — listeners survive on DOM nodes
   }
 }
 
@@ -294,6 +579,16 @@ export function processUploopAttributes(root, ctx) {
   return pendingVC
 }
 
+// ════════════════════════════════════════════════════════════
+// WeakMap-based state for virtual containers
+// Replaces ad-hoc DOM properties (_pendingVC, _upInstances).
+// Keyed by element reference — survives innerHTML replacement
+// through resource restore (same element object is preserved).
+// ════════════════════════════════════════════════════════════
+
+/** @type {WeakMap<Element, { pendingVC?: Array, instances?: Array }>} */
+const _vcState = new WeakMap()
+
 /**
  * Second-pass: process virtual containers AFTER resource restore.
  * The restored canvas element is now in DOM. On first render,
@@ -302,9 +597,17 @@ export function processUploopAttributes(root, ctx) {
  */
 export function processVirtualContainers(root, ctx, pendingVC) {
   if (!root || !pendingVC) return
-  if (!Array.isArray(pendingVC)) pendingVC = root._pendingVC || []
+
+  // Fallback: if pendingVC wasn't passed explicitly, read from WeakMap
+  if (!Array.isArray(pendingVC)) {
+    const rootState = _vcState.get(root)
+    pendingVC = rootState ? rootState.pendingVC || [] : []
+  }
   if (pendingVC.length === 0) return
-  delete root._pendingVC
+
+  // Clean up pending VC from state
+  const rootState = _vcState.get(root)
+  if (rootState) rootState.pendingVC = undefined
 
   const containers = root.querySelectorAll('[data-up-containers]')
   for (const container of containers) {
@@ -318,7 +621,13 @@ export function processVirtualContainers(root, ctx, pendingVC) {
 
     container.innerHTML = ''
 
-    const existing = container._upInstances || []
+    // Read existing instances from WeakMap instead of container._upInstances
+    let contState = _vcState.get(container)
+    if (!contState) {
+      contState = { instances: [] }
+      _vcState.set(container, contState)
+    }
+    const existing = contState.instances || []
 
     if (existing.length > 0) {
       // ── Re-render: push new props to existing instances ──
@@ -352,7 +661,7 @@ export function processVirtualContainers(root, ctx, pendingVC) {
           console.warn('[vc] component not found for tag:', def.tag, 'scope:', scopeName)
         }
       }
-      container._upInstances = instances
+      contState.instances = instances
 
       // Register canvas as persistent resource
       if (ctx.registerResource) {
@@ -377,7 +686,9 @@ export function processVirtualContainers(root, ctx, pendingVC) {
               }
             }
             const freshCtx = container.getContext?.('2d')
-            for (const inst of (container._upInstances || [])) {
+            // Read instances from WeakMap instead of container._upInstances
+            const state = _vcState.get(container)
+            for (const inst of (state ? state.instances || [] : [])) {
               if (inst.ctx2d !== undefined && freshCtx) inst.ctx2d = freshCtx
             }
           }

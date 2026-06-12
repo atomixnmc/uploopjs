@@ -39,14 +39,14 @@ function createTestExec(loop) {
     hooks: {
       preReplace(target) {
         const snap = base.hooks.preReplace(target)
-        snap._resources = resources.save()
+        snap.resources = resources.save()
         return snap
       },
       postReplace(target, snap = {}) {
         base.hooks.postReplace(target, snap)
         // simulate binding + resource restore
-        if (resources.restore && snap._resources) {
-          resources.restore(snap._resources, target)
+        if (resources.restore && snap.resources) {
+          resources.restore(snap.resources, target)
         }
       }
     },
@@ -91,9 +91,9 @@ describe('html integration', () => {
 
     const snap = exec.hooks.preReplace(document.createElement('div'))
     expect(snap).toBeDefined()
-    expect(snap._resources).toBeInstanceOf(Map)
-    expect(snap._resources.has('canvas')).toBe(true)
-    expect(snap._resources.get('canvas')).toEqual({ key: 'val' })
+    expect(snap.resources).toBeInstanceOf(Map)
+    expect(snap.resources.has('canvas')).toBe(true)
+    expect(snap.resources.get('canvas')).toEqual({ key: 'val' })
   })
 
   it('restore handles non-Map gracefully', () => {

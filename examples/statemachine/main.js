@@ -216,8 +216,7 @@ Can EMERGENCY? ${light.can("EMERGENCY")}
 
   mount: (el) => {
     const unsub = light.subscribe(() => {
-      // Re-render on state change
-      el.setAttribute?.("data-force-update", Math.random());
+      // Re-render on state change — light.data read in view handles reactivity
     });
     return () => {
       unsub();

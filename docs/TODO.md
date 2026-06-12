@@ -125,6 +125,32 @@
 - [ ] CDN bundle
 - [ ] Test suite for all html features
 
+## Phase 9 — E2E Tests (Playwright) ✅
+
+- [x] `tab-navigation.spec.js` — demo gallery tabs + URL routing
+- [x] `store.spec.js` — cart CRUD + persistence
+- [x] `transition.spec.js` — CSS transitions DOM persistence
+- [x] `canvas.spec.js` — Bouncing Ball + Cars pixel rendering
+- [x] `counter.spec.js` — increment/decrement/reset
+- [x] `todo.spec.js` — add/toggle/remove/filter
+- [x] `router.spec.js` — guards, params, layouts, login flow
+- [x] `statemachine.spec.js` — traffic light transitions
+- [x] `form.spec.js` — city input + validation
+- [x] `async-data.spec.js` — debounce, suspend, error, cache
+- [x] `css-demo.spec.js` — utility classes rendering
+- [x] `blog.spec.js` — data display + navigation
+- [x] `grid.spec.js` — sort/filter on data grid
+- [x] `carousel.spec.js` — auto-advance, prev/next, dots
+- [x] `audioplayer.spec.js` — playback controls
+- [x] `videoplayer.spec.js` — playback controls
+- [x] `paint.spec.js` — canvas drawing interaction
+- [x] `tetris.spec.js` — game rendering + input
+- [x] `wheel.spec.js` — spin animation
+- [x] `fishes.spec.js` — particle animation
+- [x] `cars.spec.js` — canvas animation + speed control
+
+> 📖 See [E2E-GUIDE.md](./E2E-GUIDE.md) for test patterns per example type.
+
 ## v0.3.1 — Sugar Syntax & Cleanup 🔴
 
 - [ ] B1: String event shorthand `@click="inc"`
