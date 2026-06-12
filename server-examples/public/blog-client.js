@@ -95,6 +95,25 @@ function createWysiwyg(initialHTML) {
         }
       }
     });
+
+    // Active state tracking — highlight toolbar buttons based on cursor position
+    const updateToolbarState = () => {
+      const cmds = ["bold", "italic", "underline", "strikeThrough"];
+      for (const cmd of cmds) {
+        const btn = toolbar?.querySelector(`[data-cmd="${cmd}"]`);
+        if (btn) {
+          const active = document.queryCommandState(cmd);
+          btn.style.background = active ? "#e0e0ff" : "#fff";
+          btn.style.borderColor = active ? "#646cff" : "#ccc";
+          btn.style.color = active ? "#646cff" : "#333";
+        }
+      }
+    };
+    document.addEventListener("selectionchange", updateToolbarState);
+    body.addEventListener("keyup", updateToolbarState);
+    body.addEventListener("mouseup", updateToolbarState);
+    // Initial state
+    setTimeout(updateToolbarState, 100);
   }
 
   console.log(
@@ -233,18 +252,9 @@ if (!root) {
   const editMatch = path.match(/^\/blog\/(.+)\/edit$/);
 
   if (editMatch) {
-    // Edit mode: fetch post, then create WYSIWYG with content
-    console.log("[Blog] Edit mode, fetching post:", editMatch[1]);
     fetch(`/api/blog/${editMatch[1]}`)
       .then((r) => r.json())
       .then((post) => {
-        console.log(
-          "[Blog] Post loaded:",
-          post.id,
-          post.title,
-          "body length:",
-          (post.body || "").length,
-        );
         document.getElementById("be-title").value = post.title || "";
         createWysiwyg(post.body);
       })

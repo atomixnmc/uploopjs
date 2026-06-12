@@ -14,7 +14,7 @@
   <a href="https://github.com/atomixnmc/uploopjs/actions/workflows/release.yml"><img src="https://github.com/atomixnmc/uploopjs/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="#"><img src="https://img.shields.io/badge/tests-346%20passed-brightgreen" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/bundle-~26KB%20gzip-blue" alt="Size"></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-v0.5.5-orange" alt="Version"></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-v0.5.6-orange" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
 </p>
 
