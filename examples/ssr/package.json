@@ -1,0 +1,10 @@
+{
+  "name": "uploop-ssr-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@uploop/core": "*",
+    "@uploop/html": "*",
+    "@uploop/sst": "*"
+  }
+}

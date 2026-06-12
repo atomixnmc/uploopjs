@@ -1,0 +1,21 @@
+{
+  "name": "@uploop/sst",
+  "version": "0.5.0",
+  "description": "Uploop Server-Side Toolset — SSR, hydration, remote loops, and services",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@uploop/core": "^0.1.0"
+  }
+}
