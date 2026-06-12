@@ -28,6 +28,9 @@ export function createApp(options = {}) {
     if (url.pathname.startsWith("/public/")) {
       return serveStatic(res, url.pathname);
     }
+    if (url.pathname.startsWith("/examples/")) {
+      return serveFile(res, join(__dirname, "..", url.pathname));
+    }
     if (url.pathname.startsWith("/packages/")) {
       return serveFile(res, join(__dirname, "..", url.pathname));
     }

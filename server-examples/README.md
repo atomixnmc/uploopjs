@@ -248,7 +248,9 @@ server-examples/
 │       ├── slither-server.mjs  Game loop (15 ticks/sec)
 │       └── slither-page.mjs    SSR page + canvas client
 ├── public/
-│   └── chess-client.js     Vanilla JS WebSocket bridge
+│   ├── chess-client.js     Vanilla JS WebSocket bridge
+│   ├── slither-client.js   Uploop client loop + canvas render
+│   └── blog-client.js      CMS: WYSIWYG editor + media blocks
 └── test/
     ├── e2e/                Playwright E2E (4 spec files, 43 tests)
     ├── app.test.js         HTTP route integration (15 tests)
@@ -272,3 +274,31 @@ pnpm test:watch        # vitest in watch mode
 ```
 
 Tests cover SSR rendering, HTTP routes, service CRUD, and component output verification — all without spinning up browsers.
+
+## Connected Ecosystem
+
+SST pages import Uploop modules from the monorepo via import maps — the same
+components work server-side (SSR) and client-side (interactive):
+
+```html
+<script type="importmap">
+  { "imports": {
+      "@uploop/core": "/packages/core/src/index.js",
+      "@uploop/html": "/packages/html/src/index.js",
+      "uploop:wysiwyg": "/examples/wysiwyg/wysiwyg-editor.mjs",
+      "uploop:media": "/examples/media/media-blocks.mjs"
+  } }
+</script>
+```
+
+| Module | Path | Used by |
+|--------|------|---------|
+| `@uploop/core` | `packages/core/` | Slither, Blog (client loops) |
+| `@uploop/html` | `packages/html/` | Blog (WYSIWYG, media blocks) |
+| `uploop:wysiwyg` | `examples/wysiwyg/` | Blog CMS editor |
+| `uploop:media` | `examples/media/` | Blog (Image, Carousel, Audio, Video blocks) |
+
+**Blog CMS** demonstrates the full loop: /blog/new creates posts via WYSIWYG with
+media insertion, /blog/:id/edit loads existing content for editing, and
+/api/blog/:id provides REST endpoints for CRUD. All powered by `createLoop`,
+`renderToString` (SSR shell), and `mount()` (client hydration).

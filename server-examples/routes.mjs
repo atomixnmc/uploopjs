@@ -8,7 +8,7 @@ import {
   BlogEditor,
   blogClientScript,
 } from "./components/blog.mjs";
-import { getPosts, getPost, createPost } from "./db/blog.js";
+import { getPosts, getPost, createPost, updatePost } from "./db/blog.js";
 import { TodoList, todosClientScript } from "./components/todos.mjs";
 import { ChatPage, chatClientScript } from "./components/chat.mjs";
 import { CSSDemo } from "./components/css-demo.mjs";
@@ -61,7 +61,22 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
         );
       }
       if (path.startsWith("/blog/")) {
-        const id = path.split("/")[2];
+        const parts = path.split("/");
+        const id = parts[2];
+        const isEdit = parts[3] === "edit";
+
+        // Edit mode — SSR editor shell, client loads existing post
+        if (isEdit) {
+          return ok(
+            res,
+            wrapPage(
+              "Edit Post",
+              renderToString(BlogEditor) + blogClientScript(),
+              "/blog",
+            ),
+          );
+        }
+
         const post = getPost(id);
         if (!post)
           return ok(
@@ -197,6 +212,17 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
       if (path === "/api/blog" && req.method === "POST") {
         return readBody(req).then((data) =>
           json(res, createPost(JSON.parse(data)), 201),
+        );
+      }
+      if (path.match(/^\/api\/blog\/\d+$/) && req.method === "GET") {
+        const id = path.split("/")[3];
+        const post = getPost(id);
+        return post ? json(res, post) : json(res, { error: "Not found" }, 404);
+      }
+      if (path.match(/^\/api\/blog\/\d+$/) && req.method === "PUT") {
+        const id = path.split("/")[3];
+        return readBody(req).then((data) =>
+          json(res, updatePost(id, JSON.parse(data))),
         );
       }
       if (path === "/api/todos" && req.method === "GET")

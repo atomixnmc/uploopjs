@@ -56,11 +56,18 @@ export const BlogDetail = component("BlogDetail", {
       </div>`;
     return html`
       <div style="max-width:660px;margin:0 auto;padding:2rem">
-        <a
-          href="/blog"
-          style="color:#646cff;text-decoration:none;font-size:0.85rem"
-          >← Back to blog</a
-        >
+        <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+          <a
+            href="/blog"
+            style="color:#646cff;text-decoration:none;font-size:0.85rem"
+            >← Back to blog</a
+          >
+          <a
+            href="/blog/${s.id}/edit"
+            style="color:#10ac84;text-decoration:none;font-size:0.85rem;margin-left:auto"
+            >✏ Edit</a
+          >
+        </div>
         <h2 style="margin-top:0.5rem">${s.title}</h2>
         <p style="color:#888;font-size:0.8rem">${s.author} · ${s.created_at}</p>
         <div id="blog-body" style="line-height:1.8;color:#444;margin-top:1rem">

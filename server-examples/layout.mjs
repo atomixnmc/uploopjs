@@ -23,7 +23,10 @@ export function wrapPage(title, content, activePath = "/") {
     {
       "imports": {
         "@uploop/core": "/packages/core/src/index.js",
-        "@uploop/html": "/packages/html/src/index.js"
+        "@uploop/html": "/packages/html/src/index.js",
+        "@uploop/css":  "/packages/css/src/index.js",
+        "uploop:wysiwyg": "/examples/wysiwyg/wysiwyg-editor.mjs",
+        "uploop:media":   "/examples/media/media-blocks.mjs"
       }
     }
   </script>
