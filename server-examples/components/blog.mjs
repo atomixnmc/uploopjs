@@ -93,137 +93,41 @@ export const BlogDetail = component("BlogDetail", {
 //
 
 export const BlogEditor = component("BlogEditor", {
-  state: {
-    title: "",
-    body: "<p>Start writing...</p>",
-    author: "Team",
-    saving: false,
-    saved: false,
-    savedId: null,
-  },
-
-  view: (s, { send }) => {
-    return html`
-      <div
-        id="blog-editor-root"
-        style="max-width:700px;margin:0 auto;padding:2rem;font-family:system-ui"
+  state: { title: "", mode: "create" },
+  view: (s) => html`
+    <div
+      id="blog-editor-root"
+      style="max-width:750px;margin:0 auto;padding:2rem;font-family:system-ui"
+    >
+      <a
+        href="/blog"
+        style="color:#646cff;text-decoration:none;font-size:0.85rem"
+        >← Back to blog</a
       >
-        <a
-          href="/blog"
-          style="color:#646cff;text-decoration:none;font-size:0.85rem"
-          >← Back to blog</a
+      <h2 style="margin:0.5rem 0">
+        ${s.mode === "edit" ? "✏️ Edit Post" : "✏️ New Blog Post"}
+      </h2>
+      <input
+        id="be-title"
+        type="text"
+        placeholder="Post title..."
+        value="${s.title}"
+        style="width:100%;padding:0.6rem;font-size:1.2rem;border:2px solid #ddd;border-radius:8px;margin-bottom:0.75rem;outline:none;font-weight:600"
+      />
+      <div id="be-wysiwyg-mount"></div>
+      <div
+        style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem"
+      >
+        <span style="font-size:0.8rem;color:#888">Ready</span>
+        <button
+          id="be-save"
+          style="padding:0.5rem 1.5rem;background:#10ac84;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.9rem;font-weight:600"
         >
-        <h2 style="margin:0.5rem 0">✏️ New Blog Post</h2>
-
-        <!-- Title -->
-        <input
-          id="be-title"
-          type="text"
-          placeholder="Post title..."
-          value="${s.title}"
-          style="width:100%;padding:0.6rem;font-size:1.2rem;border:2px solid #ddd;border-radius:8px;margin-bottom:0.75rem;outline:none;font-weight:600"
-          oninput="window._be_titleChange(this.value)"
-        />
-
-        <!-- Toolbar -->
-        <div
-          id="be-toolbar"
-          style="display:flex;gap:4px;padding:0.4rem;background:#f5f5f5;border:2px solid #ddd;border-bottom:none;border-radius:8px 8px 0 0;flex-wrap:wrap"
-        >
-          <button
-            data-cmd="bold"
-            title="Bold"
-            style="padding:0.3rem 0.5rem;font-weight:bold;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;min-width:28px"
-          >
-            B
-          </button>
-          <button
-            data-cmd="italic"
-            title="Italic"
-            style="padding:0.3rem 0.5rem;font-style:italic;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;min-width:28px"
-          >
-            I
-          </button>
-          <button
-            data-cmd="underline"
-            title="Underline"
-            style="padding:0.3rem 0.5rem;text-decoration:underline;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;min-width:28px"
-          >
-            U
-          </button>
-          <span style="width:1px;background:#ddd;margin:0 4px"></span>
-          <button
-            data-cmd="formatBlock"
-            data-arg="h2"
-            title="Heading 2"
-            style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem;font-weight:700"
-          >
-            H2
-          </button>
-          <button
-            data-cmd="formatBlock"
-            data-arg="h3"
-            title="Heading 3"
-            style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem;font-weight:700"
-          >
-            H3
-          </button>
-          <span style="width:1px;background:#ddd;margin:0 4px"></span>
-          <button
-            data-cmd="insertUnorderedList"
-            title="Bullet List"
-            style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem"
-          >
-            •≡
-          </button>
-          <button
-            data-cmd="insertOrderedList"
-            title="Numbered List"
-            style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem"
-          >
-            1≡
-          </button>
-          <span style="width:1px;background:#ddd;margin:0 4px"></span>
-          <button
-            data-cmd="createLink"
-            title="Insert Link"
-            style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem"
-          >
-            🔗
-          </button>
-        </div>
-
-        <!-- WYSIWYG content area -->
-        <div
-          id="be-body"
-          contenteditable="true"
-          style="min-height:300px;padding:1rem;border:2px solid #ddd;border-top:none;border-radius:0 0 8px 8px;outline:none;background:#fff;font-size:1rem;line-height:1.7;color:#333"
-        ></div>
-
-        <!-- Status bar -->
-        <div
-          style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem"
-        >
-          <span style="font-size:0.8rem;color:#888">
-            ${s.saving
-              ? "⏳ Saving..."
-              : s.saved
-                ? `✅ Saved! Post #${s.savedId}`
-                : "Ready"}
-          </span>
-          <div style="display:flex;gap:0.5rem">
-            <button
-              id="be-save"
-              style="padding:0.5rem 1.5rem;background:#10ac84;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.9rem;font-weight:600"
-              disabled="${s.saving}"
-            >
-              ${s.saving ? "Saving..." : "💾 Publish"}
-            </button>
-          </div>
-        </div>
+          💾 Publish
+        </button>
       </div>
-    `;
-  },
+    </div>
+  `,
 });
 
 // ── Client-side script ─────────────────────────────────────
