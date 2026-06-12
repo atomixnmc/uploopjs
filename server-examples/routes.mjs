@@ -2,7 +2,12 @@ import { renderToString } from "@uploop/sst";
 import { wrapPage, notFoundPage, errorPage } from "./layout.mjs";
 import { log } from "./logger.mjs";
 import { Counter, counterClientScript } from "./components/counter.mjs";
-import { BlogList, BlogDetail } from "./components/blog.mjs";
+import {
+  BlogList,
+  BlogDetail,
+  BlogEditor,
+  blogClientScript,
+} from "./components/blog.mjs";
 import { getPosts, getPost, createPost } from "./db/blog.js";
 import { TodoList, todosClientScript } from "./components/todos.mjs";
 import { ChatPage, chatClientScript } from "./components/chat.mjs";
@@ -37,6 +42,17 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
             "/counter",
           ),
         );
+      if (path === "/blog/new") {
+        // SSR renders the editor shell; client hydrates for WYSIWYG
+        return ok(
+          res,
+          wrapPage(
+            "New Post",
+            renderToString(BlogEditor) + blogClientScript(),
+            "/blog",
+          ),
+        );
+      }
       if (path === "/blog") {
         const posts = getPosts();
         return ok(
