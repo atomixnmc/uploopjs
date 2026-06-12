@@ -217,8 +217,8 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
       if (path === "/api/blog" && req.method === "GET")
         return json(res, await blogService.find());
       if (path === "/api/blog" && req.method === "POST") {
-        return readBody(req).then((data) =>
-          json(res, blogService.create(JSON.parse(data)), 201),
+        return readBody(req).then(async (data) =>
+          json(res, await blogService.create(JSON.parse(data)), 201),
         );
       }
       if (path.match(/^\/api\/blog\/\d+$/) && req.method === "GET") {
@@ -228,8 +228,8 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
       }
       if (path.match(/^\/api\/blog\/\d+$/) && req.method === "PUT") {
         const id = path.split("/")[3];
-        return readBody(req).then((data) =>
-          json(res, blogService.update(id, JSON.parse(data))),
+        return readBody(req).then(async (data) =>
+          json(res, await blogService.update(id, JSON.parse(data))),
         );
       }
       if (path === "/api/todos" && req.method === "GET")

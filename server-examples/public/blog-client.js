@@ -3,7 +3,6 @@
  *
  * Imports reusable components from the Uploop ecosystem via import map:
  *   import { WysiwygEditor } from 'uploop:wysiwyg'
- *   import { ImageBlock, CarouselBlock, MediaBlock } from 'uploop:media'
  */
 
 import { component } from "@uploop/core";
@@ -15,31 +14,25 @@ import { WysiwygEditor } from "uploop:wysiwyg";
 const BlogEditor = component("BlogEditor", {
   state: {
     title: "",
-    body: "<p>Start writing...</p>",
     author: "Team",
     saving: false,
     saved: false,
     savedId: null,
     mode: "create",
     postId: null,
-    wysiwygReady: false,
   },
 
   update: {
     setTitle: (s, v) => ({ title: v }),
-    setBody: (s, v) => ({ body: v }),
     setSaving: (s, v) => ({ saving: v }),
     setSaved: (s, { id }) => ({ saved: true, saving: false, savedId: id }),
     setMode: (s, { mode, post }) => ({
       mode,
       postId: post?.id || null,
       title: post?.title || "",
-      body: post?.body || "<p>Start writing...</p>",
       author: post?.author || "Team",
       saved: false,
-      wysiwygReady: false, // trigger re-sync
     }),
-    wysiwygMounted: (s) => ({ wysiwygReady: true }),
   },
 
   view: (s, { send }) => {
@@ -66,10 +59,8 @@ const BlogEditor = component("BlogEditor", {
           oninput="${(e) => send("setTitle", e.target.value)}"
         />
 
-        <!-- WYSIWYG mount point -->
         <div id="be-wysiwyg-mount"></div>
 
-        <!-- Media dialog -->
         <div
           id="be-media-dialog"
           style="display:none;margin:1rem 0;padding:1rem;background:#f8f8ff;border:1px solid #e0e0ff;border-radius:8px"
@@ -77,7 +68,7 @@ const BlogEditor = component("BlogEditor", {
           <div
             style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem"
           >
-            <strong style="font-size:0.9rem">Insert Media</strong>
+            <strong>Insert Media</strong>
             <button
               id="be-media-close"
               style="border:none;background:none;cursor:pointer;font-size:1.2rem"
@@ -94,13 +85,13 @@ const BlogEditor = component("BlogEditor", {
         <div
           style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem"
         >
-          <span style="font-size:0.8rem;color:#888">
-            ${s.saving
+          <span style="font-size:0.8rem;color:#888"
+            >${s.saving
               ? "⏳ Saving..."
               : s.saved
                 ? `✅ Saved! Post #${s.savedId}`
-                : "Ready"}
-          </span>
+                : "Ready"}</span
+          >
           <button
             id="be-save"
             style="padding:0.5rem 1.5rem;background:#10ac84;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.9rem;font-weight:600"
@@ -114,18 +105,11 @@ const BlogEditor = component("BlogEditor", {
   },
 });
 
-// ── WYSIWYG ↔ BlogEditor state sync ───────────────────────
+// ── WYSIWYG setup ──────────────────────────────────────────
 
 let _wysiwygMounted = false;
 
-function syncWysiwygToEditor() {
-  const bodyEl = document.querySelector(".up-wysiwyg-body");
-  if (bodyEl) {
-    BlogEditor.send("setBody", bodyEl.innerHTML);
-  }
-}
-
-function mountOrSyncWysiwyg(initialBody) {
+function setupWysiwyg(initialBody) {
   const mount = document.getElementById("be-wysiwyg-mount");
   if (!mount) return;
 
@@ -134,80 +118,21 @@ function mountOrSyncWysiwyg(initialBody) {
     _wysiwygMounted = true;
   }
 
-  // Set initial content from BlogEditor state
-  const bodyEl = mount.querySelector(".up-wysiwyg-body");
-  if (bodyEl && initialBody) {
-    bodyEl.innerHTML = initialBody;
-    WysiwygEditor.send("setValue", initialBody);
+  // Set content using closure-based API (survives re-renders)
+  if (initialBody) {
+    WysiwygEditor.setContent(initialBody);
   }
 
-  // Sync toolbar edits back to BlogEditor
-  if (bodyEl && !bodyEl._synced) {
-    bodyEl._synced = true;
-    bodyEl.addEventListener("input", () => syncWysiwygToEditor());
-  }
-
-  // Sync WYSIWYG state changes back
+  // Hook media insertion events
   if (!mount._mediaHooked) {
     mount._mediaHooked = true;
     mount.addEventListener("up-media-insert", (e) =>
       showMediaDialog(e.detail.type),
     );
   }
-
-  BlogEditor.send("wysiwygMounted");
 }
 
-// ── Media block rendering on blog detail pages ─────────────
-
-function mountMediaBlocks() {
-  // Scan for data-media attributes and replace with mounted components
-  const blocks = document.querySelectorAll("[data-media]");
-  blocks.forEach((el) => {
-    if (el._mounted) return;
-    el._mounted = true;
-
-    const type = el.dataset.media;
-    if (type === "image") {
-      const img = new Image();
-      img.onload = () => {
-        ImageBlock.mount(el, {
-          state: {
-            src: el.dataset.src,
-            alt: el.dataset.alt || "",
-            caption: el.dataset.caption || "",
-          },
-        });
-      };
-      img.src = el.dataset.src;
-      // Fallback: mount immediately
-      ImageBlock.mount(el, {
-        state: {
-          src: el.dataset.src,
-          alt: el.dataset.alt || "",
-          caption: el.dataset.caption || "",
-        },
-      });
-    } else if (type === "carousel") {
-      const images = [];
-      for (const [k, v] of Object.entries(el.dataset)) {
-        if (k.startsWith("img")) images.push({ src: v, alt: "" });
-      }
-      CarouselBlock.mount(el, { state: { images } });
-    } else if (type === "audio" || type === "video") {
-      MediaBlock.mount(el, {
-        state: {
-          type,
-          src: el.dataset.src,
-          title: el.dataset.title || "",
-          artist: el.dataset.artist || "",
-        },
-      });
-    }
-  });
-}
-
-// ── Media insertion ────────────────────────────────────────
+// ── Media dialog ───────────────────────────────────────────
 
 function showMediaDialog(type) {
   const dialog = document.getElementById("be-media-dialog");
@@ -217,10 +142,10 @@ function showMediaDialog(type) {
 
   const fields = {
     image: `<label>Image URL</label><input id=mf-src placeholder=https://... style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
-      <label>Alt text</label><input id=mf-alt placeholder=Description style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
+      <label>Alt</label><input id=mf-alt placeholder=Description style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
       <label>Caption</label><input id=mf-caption placeholder=Optional style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
       <button id=mf-insert style=padding:.4rem;background:#646cff;color:#fff;border:none;border-radius:4px;cursor:pointer>Insert Image</button>`,
-    carousel: `<label>Image URLs (one per line)</label><textarea id=mf-urls rows=4 placeholder="https://picsum.photos/seed/a/600/300&#10;https://picsum.photos/seed/b/600/300" style=padding:.4rem;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:.8rem></textarea>
+    carousel: `<label>Image URLs (one per line)</label><textarea id=mf-urls rows=4 placeholder="https://picsum.photos/seed/a/600/300" style=padding:.4rem;border:1px solid #ccc;border-radius:4px;font-family:monospace;font-size:.8rem></textarea>
       <button id=mf-insert style=padding:.4rem;background:#646cff;color:#fff;border:none;border-radius:4px;cursor:pointer>Insert Carousel</button>`,
     audio: `<label>Media URL</label><input id=mf-src placeholder=https://... style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
       <label>Title</label><input id=mf-title placeholder=Title style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
@@ -250,16 +175,14 @@ function insertMediaPlaceholder(type, props) {
     const attrs = props.urls.map((u, i) => `data-img${i}="${u}"`).join(" ");
     html = `<div data-media="carousel" ${attrs} contenteditable="false" style="display:block;margin:1rem 0;padding:2rem;text-align:center;background:#f0f0f5;border-radius:8px;color:#888"><em>🎠 Carousel (${props.urls.length} images)</em></div>`;
   } else {
-    const icon = type === "audio" ? "🎵" : "🎬";
-    html = `<div data-media="${type}" data-src="${props.src}" data-title="${props.title}" data-artist="${props.artist}" contenteditable="false" style="display:block;margin:1rem 0"><em>${icon} ${props.title || type}</em></div>`;
+    html = `<div data-media="${type}" data-src="${props.src}" data-title="${props.title}" data-artist="${props.artist}" contenteditable="false" style="display:block;margin:1rem 0"><em>${type === "audio" ? "🎵" : "🎬"} ${props.title || type}</em></div>`;
   }
 
   body.focus();
   document.execCommand("insertHTML", false, html);
-  syncWysiwygToEditor();
 }
 
-// ── Form submit handler ────────────────────────────────────
+// ── Media form handler ────────────────────────────────────
 
 document.addEventListener("click", (e) => {
   if (e.target.id !== "mf-insert") return;
@@ -286,7 +209,6 @@ document.addEventListener("click", (e) => {
       title: g("mf-title"),
       artist: g("mf-artist"),
     });
-
   dialog.style.display = "none";
 });
 
@@ -299,13 +221,14 @@ async function handleSave() {
 
   BlogEditor.send("setSaving", true);
   try {
+    const body = WysiwygEditor.getContent();
     const url =
       s.mode === "edit" && s.postId ? `/api/blog/${s.postId}` : "/api/blog";
     const method = s.mode === "edit" ? "PUT" : "POST";
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: s.title, body: s.body, author: s.author }),
+      body: JSON.stringify({ title: s.title, body, author: s.author }),
     });
     if (!res.ok) throw new Error("Server error: " + res.status);
     const post = await res.json();
@@ -323,38 +246,29 @@ async function handleSave() {
 // ── Init ───────────────────────────────────────────────────
 
 const root = document.getElementById("blog-editor-root");
-
-if (root) {
-  // Mount BlogEditor shell first (renders title input + save button)
+if (!root) {
+  console.log("[Blog] Not on editor page");
+} else {
   BlogEditor.mount(root);
 
   const path = window.location.pathname;
   const editMatch = path.match(/^\/blog\/(\d+)\/edit$/);
 
   if (editMatch) {
-    // Edit mode: fetch post, THEN mount WYSIWYG with content
-    const postId = editMatch[1];
-    fetch(`/api/blog/${postId}`)
+    fetch(`/api/blog/${editMatch[1]}`)
       .then((r) => r.json())
       .then((post) => {
         BlogEditor.send("setMode", { mode: "edit", post });
-        // Wait a tick for state to propagate, then mount WYSIWYG with content
-        requestAnimationFrame(() => {
-          mountOrSyncWysiwyg(post.body);
-        });
+        requestAnimationFrame(() => setupWysiwyg(post.body));
       })
-      .catch(() => mountOrSyncWysiwyg());
+      .catch(() => requestAnimationFrame(() => setupWysiwyg()));
   } else {
-    // Create mode: mount WYSIWYG immediately with default content
-    requestAnimationFrame(() => mountOrSyncWysiwyg());
+    requestAnimationFrame(() => setupWysiwyg());
   }
 
-  // Wire save button (delegated — survives innerHTML)
   document.addEventListener("click", (e) => {
     if (e.target.id === "be-save") handleSave();
   });
 
-  console.log("[Blog] CMS editor mounted — uploop:wysiwyg + uploop:media");
-} else {
-  console.log("[Blog] Blog detail or list page — no editor");
+  console.log("[Blog] CMS ready — WYSIWYG with closure-based state");
 }
