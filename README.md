@@ -12,9 +12,9 @@
 <p align="center">
   <a href="https://github.com/atomixnmc/uploopjs/actions/workflows/gh-pages.yml"><img src="https://github.com/atomixnmc/uploopjs/actions/workflows/gh-pages.yml/badge.svg" alt="Pages"></a>
   <a href="https://github.com/atomixnmc/uploopjs/actions/workflows/release.yml"><img src="https://github.com/atomixnmc/uploopjs/actions/workflows/release.yml/badge.svg" alt="Release"></a>
-  <a href="#"><img src="https://img.shields.io/badge/tests-228%20passed-brightgreen" alt="Tests"></a>
+  <a href="#"><img src="https://img.shields.io/badge/tests-346%20passed-brightgreen" alt="Tests"></a>
   <a href="#"><img src="https://img.shields.io/badge/bundle-~26KB%20gzip-blue" alt="Size"></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-v0.5.0-orange" alt="Version"></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-v0.5.5-orange" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
 </p>
 
@@ -112,6 +112,50 @@ npm run dev
 Open `http://localhost:3000` — you'll see the demo gallery with 20 examples.
 
 🌐 **Live demo:** [atomixnmc.github.io/uploopjs](https://atomixnmc.github.io/uploopjs/)
+
+## Server-Side Toolset (SST)
+
+Uploop ships a **battery-included server framework** where HTTP, WebSocket, SQLite,
+and multiplayer games are all wired through the same `createLoop` model — no
+separate state management, no separate WebSocket library.
+
+```bash
+cd server-examples
+pnpm install
+pnpm dev          # node --watch → instant hot reload
+```
+
+Open **http://localhost:3500** — 10 pages on one port:
+
+| Page | Tech |
+|------|------|
+| `/` | Landing with feature cards |
+| `/counter` | SSR + hydration |
+| `/blog` | SSR + SQLite |
+| `/todos` | Service pattern + REST API |
+| `/chat` | Real-time WebSocket chat |
+| `/chess` | Multiplayer chess (PvP + PvE with AI) |
+| `/slither` | Multiplayer snake game (15fps) |
+| `/css-demo` | Server-side CSS theming |
+| `/api-docs` | Interactive API tester |
+| `/hypergraph` | Live loop diagnostics dashboard |
+
+```js
+// Every feature is a createLoop — same API for SSR, WebSocket, games, and CRUD
+const chessGame = createLoop({
+  state: { board: createGame(), currentTurn: 'white', status: 'waiting' },
+  update: {
+    join(s, player) { /* ... */ },
+    select(s, { row, col }) { /* validate + apply move */ },
+    aiMove: { run: async (s) => { /* import AI, compute, return move */ } }
+  }
+})
+
+chessGame.subscribe(state => broadcast(wsClients, state))
+```
+
+**346 unit tests + 46 E2E tests** across 38 test files. See
+[server-examples/README.md](./server-examples/README.md) for the full architecture.
 
 ## Docs
 

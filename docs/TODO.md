@@ -194,10 +194,24 @@
 - [x] Docs: `design-server-side.md`, `progress-v0.5.md`, `report-v0.5-planning.md`
 - [x] Tests: 8 SST tests (SSR, hydration, services)
 
+## Phase 10 — Server-Examples (SST Showcase) ✅
+
+- [x] SST Server Framework (server.mjs, app.mjs, routes.mjs, layout.mjs, logger.mjs)
+- [x] 10 SSR pages — Landing, Counter, Blog, Todos, Chat, CSS Demo, Chess, Slither, API Docs, HyperGraph
+- [x] SQLite-backed blog with SSR rendering
+- [x] Real-time WebSocket chat with online counter
+- [x] Multiplayer Slither — 15fps canvas game, 20 players, WebSocket broadcast
+- [x] Multiplayer Chess — PvP + PvE, game loop, WebSocket sync
+- [x] Chess AI — chess.js + PeSTO eval + depth-3 alpha-beta minimax
+- [x] Hot reload — /ws-hotreload endpoint + client script auto-refresh
+- [x] 118 unit tests (7 files) + 43 E2E tests (4 Playwright files)
+- [x] Progress docs: progress-v0.5.x.md
+
 ## Stats
 
-- **Packages:** 8 (@uploop/core, html, store, router, css, state-machine, sst, devutils)
-- **Source files:** 55
-- **Examples:** 20
-- **Unit tests:** 228 passing + 2 skipped
-- **Test files:** 27
+- **Packages:** 8
+- **Source files:** 55 packages + 35 server-examples
+- **Examples:** 20 client + 10 SST pages
+- **Unit tests:** 346 (228 package + 118 server-examples)
+- **E2E tests:** 46 (21 client + 25 server)
+- **Test files:** 38 (27 package + 11 server-examples)

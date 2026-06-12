@@ -1,0 +1,14 @@
+import { getDB } from './schema.js'
+
+export function getPosts() {
+  return getDB().prepare('SELECT * FROM posts ORDER BY created_at DESC').all()
+}
+
+export function getPost(id) {
+  return getDB().prepare('SELECT * FROM posts WHERE id = ?').get(id)
+}
+
+export function createPost({ title, body, author = 'Team' }) {
+  const result = getDB().prepare('INSERT INTO posts (title, body, author) VALUES (?, ?, ?)').run(title, body, author)
+  return getPost(result.lastInsertRowid)
+}
