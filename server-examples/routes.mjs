@@ -8,7 +8,7 @@ import {
   BlogEditor,
   blogClientScript,
 } from "./components/blog.mjs";
-import { getPosts, getPost, createPost, updatePost } from "./db/blog.js";
+import { blogService, getBlogGraph } from "./services/blog.mjs";
 import { TodoList, todosClientScript } from "./components/todos.mjs";
 import { ChatPage, chatClientScript } from "./components/chat.mjs";
 import { CSSDemo } from "./components/css-demo.mjs";
@@ -54,7 +54,7 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
         );
       }
       if (path === "/blog") {
-        const posts = getPosts();
+        const posts = await blogService.find();
         return ok(
           res,
           wrapPage("Blog", renderToString(BlogList, { posts }), "/blog"),
@@ -77,7 +77,7 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
           );
         }
 
-        const post = getPost(id);
+        const post = await blogService.get(id);
         if (!post)
           return ok(
             res,
@@ -175,6 +175,13 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
             events: slitherGame.events || { total: 0, rejected: 0 },
             state: slitherGame.get(),
           },
+          blog: {
+            graph: blogService.loop,
+            desc: "Blog data loop — createLoop + createService pattern",
+            events: blogService.loop.events || { total: 0, rejected: 0 },
+            state: blogService.find(),
+            graphJSON: getBlogGraph(),
+          },
         };
         return ok(
           res,
@@ -208,21 +215,21 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
 
       // API
       if (path === "/api/blog" && req.method === "GET")
-        return json(res, getPosts());
+        return json(res, await blogService.find());
       if (path === "/api/blog" && req.method === "POST") {
         return readBody(req).then((data) =>
-          json(res, createPost(JSON.parse(data)), 201),
+          json(res, blogService.create(JSON.parse(data)), 201),
         );
       }
       if (path.match(/^\/api\/blog\/\d+$/) && req.method === "GET") {
         const id = path.split("/")[3];
-        const post = getPost(id);
+        const post = blogService.get(id);
         return post ? json(res, post) : json(res, { error: "Not found" }, 404);
       }
       if (path.match(/^\/api\/blog\/\d+$/) && req.method === "PUT") {
         const id = path.split("/")[3];
         return readBody(req).then((data) =>
-          json(res, updatePost(id, JSON.parse(data))),
+          json(res, blogService.update(id, JSON.parse(data))),
         );
       }
       if (path === "/api/todos" && req.method === "GET")
