@@ -73,6 +73,7 @@ Counter.mount(document.getElementById('root'))
 | `@uploop/router` | Route matching, guards, layouts, lazy loading | 9 KB |
 | `@uploop/css` | Utility CSS engine, theme tokens, variants, animations | 53 KB |
 | `@uploop/state-machine` | Finite state machine, entry/exit hooks, guards | 4 KB |
+| `@uploop/sst` | SSR, hydration, remote loops, FeathersJS-style services | — |
 | `@uploop/devutils` | HyperGraph Inspector, event capture, debug panel | — |
 
 ## Async Metadata — Zero Boilerplate
@@ -108,11 +109,22 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` — you'll see the demo gallery with 19 examples.
+Open `http://localhost:3000` — you'll see the demo gallery with 20 examples.
 
-📖 **Developer guide:** [HOWTO.md](./docs/HOWTO.md)
-📋 **Examples catalog:** [EXAMPLES.md](./docs/examples.md)
-🗺 **Roadmap:** [PLAN.md](./docs/PLAN.md) | [TODO.md](./docs/TODO.md)
+🌐 **Live demo:** [atomixnmc.github.io/uploopjs](https://atomixnmc.github.io/uploopjs/)
+
+## Docs
+
+| Document | Description |
+|---|---|
+| [HOWTO.md](./docs/HOWTO.md) | Developer guide — syntax, patterns, React comparison |
+| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Full architecture — graph engine, event pipeline, protocols |
+| [examples.md](./docs/examples.md) | All 20 examples with code snippets |
+| [E2E-GUIDE.md](./docs/E2E-GUIDE.md) | Playwright e2e test patterns per example type |
+| [PLAN.md](./docs/PLAN.md) | Original rework plan + design decisions |
+| [TODO.md](./docs/TODO.md) | Living task list — phases, status, stats |
+| [design/](./docs/design/) | Design docs — core, html, store, props, server-side |
+| [progress/](./docs/progress/) | Version progress reports + planning documents |
 
 ## License
 
