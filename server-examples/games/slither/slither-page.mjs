@@ -11,8 +11,8 @@ export const SlitherPage = component("SlitherPage", {
       >
         <h2>🐍 Slither (Multiplayer)</h2>
         <p style="color:#888;font-size:0.9rem">
-          ${count} player${count !== 1 ? "s" : ""} online · Arrow keys to move ·
-          Wrap-around map · Eat food to grow
+          ${count} player${count !== 1 ? "s" : ""} online · Mouse to steer ·
+          Double-click fullscreen · Wrap-around map · Eat food to grow
         </p>
         <canvas
           id="slither-canvas"
@@ -20,9 +20,20 @@ export const SlitherPage = component("SlitherPage", {
           height="480"
           style="border:2px solid #222;border-radius:8px;background:#0a0a14;display:block;margin:1rem 0;box-shadow:0 4px 24px rgba(0,0,0,0.4)"
         ></canvas>
-        <p style="color:#555;font-size:0.75rem">
-          Server tick: 15fps · Client render: 60fps with frame interpolation
-        </p>
+        <div
+          style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem"
+        >
+          <button
+            id="slither-fs-btn"
+            onclick="document.getElementById('slither-canvas').requestFullscreen().catch(()=>{})"
+            style="padding:0.3rem 0.8rem;background:#333;color:#fff;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:0.75rem"
+          >
+            ⛶ Fullscreen
+          </button>
+          <span style="color:#555;font-size:0.7rem"
+            >Server 15fps · Client 60fps · Mouse-follow + Arrow keys</span
+          >
+        </div>
       </div>
     `;
   },
@@ -33,5 +44,5 @@ export const SlitherPage = component("SlitherPage", {
  * Loaded as a static file — same pattern as chess-client.js.
  */
 export function slitherClientScript() {
-  return `<script type="module" src="/public/slither-client.js"><\/script>`;
+  return `<script type="module" src="/public/slither-client.js"></script>`;
 }

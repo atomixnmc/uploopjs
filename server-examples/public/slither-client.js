@@ -29,6 +29,9 @@ const loop = createLoop({
     food: [],
     tick: 0,
     particles: [], // [{x, y, vx, vy, life, color}]
+    mouseX: W / 2, // mouse position for snake control
+    mouseY: H / 2,
+    lastDir: null, // last sent direction (dedup optimization)
   },
 
   update: {
@@ -103,15 +106,44 @@ ws.onmessage = (e) => {
   loop.send("serverState", data);
 };
 
-// ── Keyboard input ─────────────────────────────────────────
+// ── Mouse-follow input (replaces keyboard) ──────────────────
 
+const canvas = document.getElementById("slither-canvas");
+const ctx = canvas.getContext("2d");
+
+// Track mouse on canvas
+canvas.addEventListener("mousemove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width; // canvas may be CSS-scaled
+  const scaleY = H / rect.height;
+  loop.send("setMouse", {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  });
+});
+
+// Also support touch for mobile
+canvas.addEventListener(
+  "touchmove",
+  (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    loop.send("setMouse", {
+      x: (touch.clientX - rect.left) * (W / rect.width),
+      y: (touch.clientY - rect.top) * (H / rect.height),
+    });
+  },
+  { passive: false },
+);
+
+// Keep keyboard as fallback
 const DIRS = {
   ArrowUp: { x: 0, y: -1 },
   ArrowDown: { x: 0, y: 1 },
   ArrowLeft: { x: -1, y: 0 },
   ArrowRight: { x: 1, y: 0 },
 };
-
 document.addEventListener("keydown", (e) => {
   const dir = DIRS[e.key];
   if (dir) {
@@ -119,6 +151,16 @@ document.addEventListener("keydown", (e) => {
     ws.send(JSON.stringify({ type: "turn", playerId, dir }));
   }
 });
+
+// Fullscreen toggle
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    canvas.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+canvas.addEventListener("dblclick", toggleFullscreen);
 
 // ── Canvas drawing (60fps with interpolation) ──────────────
 
@@ -191,6 +233,33 @@ function lerpPos(a, b, t) {
 function draw() {
   try {
     const s = loop.get();
+
+    // ── Mouse-follow: compute direction and send to server ──
+    // Uploop optimization: only send when direction changes (dedup)
+    const mySnake = s.snakes[playerId];
+    if (mySnake && mySnake.alive && mySnake.body) {
+      const head = mySnake.body[0];
+      const hx = head.x * CELL + CELL / 2;
+      const hy = head.y * CELL + CELL / 2;
+      const dx = s.mouseX - hx;
+      const dy = s.mouseY - hy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Only follow if mouse is reasonably far from head (avoid jitter)
+      if (dist > CELL * 1.5) {
+        // Snap to closest cardinal direction
+        let dir;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          dir = { x: dx > 0 ? 1 : -1, y: 0 };
+        } else {
+          dir = { x: 0, y: dy > 0 ? 1 : -1 };
+        }
+        // Dedup: only send if direction changed
+        if (!s.lastDir || s.lastDir.x !== dir.x || s.lastDir.y !== dir.y) {
+          ws.send(JSON.stringify({ type: "turn", playerId, dir }));
+          loop.send("setLastDir", dir);
+        }
+      }
+    }
 
     // Track tick changes for interpolation
     if (currentState && currentState.tick !== s.tick) {
