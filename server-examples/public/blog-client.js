@@ -111,16 +111,26 @@ let _wysiwygMounted = false;
 
 function setupWysiwyg(initialBody) {
   const mount = document.getElementById("be-wysiwyg-mount");
-  if (!mount) return;
+  if (!mount) {
+    console.error("[Blog] ERROR: #be-wysiwyg-mount not found in DOM");
+    return;
+  }
 
   if (!_wysiwygMounted) {
-    WysiwygEditor.mount(mount);
-    _wysiwygMounted = true;
+    try {
+      WysiwygEditor.mount(mount);
+      _wysiwygMounted = true;
+      console.log("[Blog] WYSIWYG mounted successfully");
+    } catch (e) {
+      console.error("[Blog] ERROR mounting WYSIWYG:", e.message, e.stack);
+      return;
+    }
   }
 
   // Set content using closure-based API (survives re-renders)
   if (initialBody) {
     WysiwygEditor.setContent(initialBody);
+    console.log("[Blog] WYSIWYG content set, length:", initialBody.length);
   }
 
   // Hook media insertion events
