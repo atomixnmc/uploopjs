@@ -13,7 +13,7 @@
     "src"
   ],
   "dependencies": {
-    "@uploop/core": "^0.1.0",
-    "@uploop/html": "^0.1.0"
+    "@uploop/core": "workspace:*",
+        "@uploop/html": "workspace:*"
   }
 }

@@ -4,7 +4,7 @@
   "type": "module",
   "main": "./src/index.js",
   "dependencies": {
-    "@uploop/core": "*",
-    "@uploop/html": "*"
+    "@uploop/core": "workspace:*",
+        "@uploop/html": "workspace:*"
   }
 }

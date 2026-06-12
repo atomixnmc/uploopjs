@@ -5,5 +5,5 @@
   "type": "module",
   "main": "./src/index.js",
   "exports": { ".": { "import": "./src/index.js" } },
-  "dependencies": { "@uploop/core": "^0.1.0" }
+  "dependencies": { "@uploop/core": "workspace:*" }
 }

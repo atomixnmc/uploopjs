@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 test-results
+playwright-report
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Windows artifacts
+nul
 
 # Editor directories and files
 .vscode/*

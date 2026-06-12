@@ -158,13 +158,13 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       }
 
       // Execution pipeline: preReplace → replace → postReplace
-      const baseSnapshot = exec.hooks?.preReplace?.(element) ?? {}
+      const baseSnapshot = _exec.hooks?.preReplace?.(element) ?? {}
       const snapshot = createSnapshot({ ...baseSnapshot, bindings })
 
-      exec.replace(element, htmlStr)
+      _exec.replace(element, htmlStr)
 
-      if (exec.hooks?.postReplace) {
-        exec.hooks.postReplace(element, snapshot)
+      if (_exec.hooks?.postReplace) {
+        _exec.hooks.postReplace(element, snapshot)
       }
     }
 
@@ -180,7 +180,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       unsubscribe()
       if (unmountHook) unmountHook(element, { send: loop.send, get: loop.get, registerResource: resources.register })
       element.removeAttribute?.('data-up-component')
-      exec.unmount(element)
+      _exec.unmount(element)
       resources.clear()
     }
   }
@@ -262,7 +262,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         const result = doRender()
         if (!result || !el) return
 
-        const baseSnapshot = exec.hooks?.preReplace?.(el) ?? {}
+        const baseSnapshot = _exec.hooks?.preReplace?.(el) ?? {}
         let snapshot
 
         let htmlStr
@@ -279,10 +279,10 @@ export function component(name, config = {}, lifecycleMethods = {}) {
           snapshot = createSnapshot(baseSnapshot)
         }
 
-        if (exec.replace) exec.replace(el, htmlStr); else el.innerHTML = htmlStr
+        if (_exec.replace) _exec.replace(el, htmlStr); else el.innerHTML = htmlStr
 
-        if (exec.hooks?.postReplace) {
-          exec.hooks.postReplace(el, snapshot)
+        if (_exec.hooks?.postReplace) {
+          _exec.hooks.postReplace(el, snapshot)
         }
       }
 
@@ -322,7 +322,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         unsub()
         frameLoop.stop()
         if (_mountHookCleanup) _mountHookCleanup()
-        exec.unmount(el)
+        _exec.unmount(el)
         _instResources.clear()
       }
     }
@@ -376,6 +376,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
 
   try { Object.defineProperty(callable, 'name', { value: name }) } catch (e) {}
   callable.loop = loop
+  callable.view = view                  // expose for SSR
   callable.render = render
   callable.mount = mountTo
   callable.create = create

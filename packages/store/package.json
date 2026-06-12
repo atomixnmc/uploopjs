@@ -13,6 +13,6 @@
     "src"
   ],
   "dependencies": {
-    "@uploop/core": "^0.1.0"
+    "@uploop/core": "workspace:*"
   }
 }

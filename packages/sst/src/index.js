@@ -18,6 +18,6 @@
  *     app.use('products', { loop: productLoop, methods: { ... } })
  */
 
-export { renderToString, renderToHtml } from './ssr.js'
+export { renderToString } from './ssr.js'
 export { hydrate, createHydrationRoot } from './hydrate.js'
 export { createService, createServiceApp } from './service.js'
