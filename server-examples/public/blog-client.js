@@ -29,9 +29,39 @@ const TOOLBAR_HTML = `
     <button data-media="carousel" title="Insert Carousel" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🎠</button>
     <button data-media="audio" title="Insert Audio" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🎵</button>
     <button data-media="video" title="Insert Video" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🎬</button>
+    <span style="width:1px;background:#ddd;margin:0 4px"></span>
+    <button data-action="undo" title="Undo (Ctrl+Z)" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">↩</button>
+    <button data-action="redo" title="Redo (Ctrl+Y)" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">↪</button>
   </div>`;
 
 // ── Create WYSIWYG editor in mount div ────────────────────
+
+// Undo/redo stack (Operational Transform light)
+let _undoStack = [];
+let _redoStack = [];
+const MAX_UNDO = 50;
+
+function pushUndo(html) {
+  _undoStack.push(html);
+  if (_undoStack.length > MAX_UNDO) _undoStack.shift();
+  _redoStack = []; // clear redo on new action
+}
+
+function undo() {
+  const body = document.querySelector(".up-wysiwyg-body");
+  if (!body || _undoStack.length < 2) return;
+  _redoStack.push(_undoStack.pop());
+  const prev = _undoStack[_undoStack.length - 1];
+  body.innerHTML = prev;
+}
+
+function redo() {
+  const body = document.querySelector(".up-wysiwyg-body");
+  if (!body || _redoStack.length === 0) return;
+  const next = _redoStack.pop();
+  _undoStack.push(next);
+  body.innerHTML = next;
+}
 
 function createWysiwyg(initialHTML) {
   const mount = document.getElementById("be-wysiwyg-mount");
@@ -63,7 +93,16 @@ function createWysiwyg(initialHTML) {
 
       const cmd = btn.dataset.cmd;
       const mediaType = btn.dataset.media;
+      const action = btn.dataset.action;
 
+      if (action === "undo") {
+        undo();
+        return;
+      }
+      if (action === "redo") {
+        redo();
+        return;
+      }
       if (mediaType) {
         showMediaDialog(mediaType);
         return;
@@ -82,13 +121,24 @@ function createWysiwyg(initialHTML) {
   if (body) {
     body.addEventListener("keydown", (e) => {
       if (e.ctrlKey || e.metaKey) {
-        const map = { b: "bold", i: "italic", u: "underline", k: "createLink" };
+        const map = {
+          b: "bold",
+          i: "italic",
+          u: "underline",
+          k: "createLink",
+          z: "undo",
+          y: "redo",
+        };
         const cmd = map[e.key];
         if (cmd) {
           e.preventDefault();
           if (cmd === "createLink") {
             const url = prompt("Link URL:", "https://");
             if (url) document.execCommand(cmd, false, url);
+          } else if (cmd === "undo") {
+            undo();
+          } else if (cmd === "redo") {
+            redo();
           } else {
             document.execCommand(cmd);
           }
@@ -112,8 +162,12 @@ function createWysiwyg(initialHTML) {
     document.addEventListener("selectionchange", updateToolbarState);
     body.addEventListener("keyup", updateToolbarState);
     body.addEventListener("mouseup", updateToolbarState);
+    // Snapshot for undo after each edit
+    body.addEventListener("input", () => pushUndo(body.innerHTML));
     // Initial state
     setTimeout(updateToolbarState, 100);
+    // Initial undo snapshot
+    pushUndo(body.innerHTML);
   }
 
   console.log(

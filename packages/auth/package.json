@@ -1,0 +1,10 @@
+{
+  "name": "@uploop/auth",
+  "version": "0.1.0",
+  "description": "Declarative authentication & authorization — 8 concepts, loop-first",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": { ".": { "import": "./src/index.js" } },
+  "files": ["src"],
+  "peerDependencies": { "@uploop/core": "*" }
+}
