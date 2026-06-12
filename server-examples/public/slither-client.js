@@ -1,68 +1,25 @@
 /**
- * Slither Client — external script loaded via <script src="/public/slither-client.js">
+ * Slither Client — loaded as <script type="module" src="/public/slither-client.js">
  *
- * Architecture (Uploop pattern, vanilla JS):
+ * Architecture:
+ *   Server pushes state at 15fps via WebSocket → local createLoop
+ *   receives it and triggers canvas renders. Rendering runs at
+ *   60fps via requestAnimationFrame with frame interpolation.
  *
- *   createLoop({ state, update }) → { get, send, subscribe }
- *
- *   Server pushes state at 15fps via WebSocket → client loop
- *   receives it, updates local state, and triggers canvas draw.
- *   Rendering runs at 60fps via requestAnimationFrame with
- *   frame interpolation for buttery-smooth motion.
- *
+ *   import { createLoop } from '@uploop/core'    ← real package
  *   ┌─────────┐   WS 15fps    ┌──────────────┐   rAF 60fps   ┌────────┐
  *   │ Server  │ ────────────→ │ Client Loop  │ ────────────→ │ Canvas │
  *   │ (loop)  │               │ state+update │               │ render │
  *   └─────────┘               └──────────────┘               └────────┘
  */
 
+import { createLoop } from "@uploop/core";
+
 const CELL = 12;
 const COLS = 60,
   ROWS = 40;
 const W = COLS * CELL,
   H = ROWS * CELL;
-
-// ── Mini createLoop (Uploop pattern, zero deps) ────────────
-
-/**
- * A tiny createLoop implementation demonstrating the Uploop pattern.
- * In production, import { createLoop } from '@uploop/core'.
- */
-function createLoop(config) {
-  let state = { ...config.state };
-  const handlers = config.update || {};
-  const subs = [];
-
-  function get() {
-    return state;
-  }
-
-  function send(event, payload) {
-    const fn = handlers[event];
-    if (!fn) return;
-    const result = fn(state, payload);
-    if (result !== undefined && result !== state) {
-      state = { ...state, ...result };
-      for (const sub of subs) {
-        try {
-          sub(state);
-        } catch (e) {
-          console.error("[Loop] subscriber error:", e);
-        }
-      }
-    }
-  }
-
-  function subscribe(fn) {
-    subs.push(fn);
-    return () => {
-      const i = subs.indexOf(fn);
-      if (i >= 0) subs.splice(i, 1);
-    };
-  }
-
-  return { get, send, subscribe };
-}
 
 // ── App state loop ─────────────────────────────────────────
 
@@ -199,11 +156,10 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Radial gradient per snake segment
+// Radial gradient per snake segment — with NaN guard
 function segGradient(x, y, size, color) {
-  // Defensive: ensure all params are finite before passing to canvas API
   if (!isFinite(x) || !isFinite(y) || !isFinite(size) || size <= 0) {
-    return color; // fallback to flat color
+    return color;
   }
   const g = ctx.createRadialGradient(
     x + size / 2,
@@ -226,7 +182,6 @@ let lerpT = 0;
 
 function lerpPos(a, b, t) {
   if (!a || !b) return b || a;
-  // Guard against NaN from missing segments (new player, desync)
   const x = a.x + (b.x - a.x) * t;
   const y = a.y + (b.y - a.y) * t;
   if (!isFinite(x) || !isFinite(y)) return b;
@@ -245,7 +200,7 @@ function draw() {
     currentState = { ...s };
     lerpT = Math.min(1, lerpT + 0.09);
 
-    // ── Background ───────────────────────────────────────────
+    // ── Background gradient ──────────────────────────────
     const bg = ctx.createLinearGradient(0, 0, 0, H);
     bg.addColorStop(0, "#0a0a14");
     bg.addColorStop(1, "#111122");
@@ -268,14 +223,13 @@ function draw() {
       ctx.stroke();
     }
 
-    // ── Food — glowing pulsing dots ──────────────────────────
+    // ── Food — glowing pulsing dots ─────────────────────
     const pulse = 1 + Math.sin(Date.now() / 300) * 0.2;
     for (const f of s.food || []) {
       const fx = f.x * CELL + CELL / 2;
       const fy = f.y * CELL + CELL / 2;
       const r = 4 * pulse;
 
-      // Outer glow
       const glow = ctx.createRadialGradient(fx, fy, r * 0.2, fx, fy, r * 1.8);
       glow.addColorStop(0, "rgba(255,255,100,0.8)");
       glow.addColorStop(0.5, "rgba(255,200,50,0.3)");
@@ -285,14 +239,13 @@ function draw() {
       ctx.arc(fx, fy, r * 1.8, 0, Math.PI * 2);
       ctx.fill();
 
-      // Bright core
       ctx.fillStyle = "#ffee44";
       ctx.beginPath();
       ctx.arc(fx, fy, r * 0.55, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // ── Snakes — gradient bodies + eyes ──────────────────────
+    // ── Snakes — gradient bodies + eyes ─────────────────
     for (const snake of Object.values(s.snakes || {})) {
       if (!snake.alive) continue;
 
@@ -328,12 +281,11 @@ function draw() {
         roundRect(sx + off, sy + off, segSize, segSize, segSize * 0.35);
         ctx.fill();
 
-        // Border
         ctx.strokeStyle = darken(snake.color, 0.3);
         ctx.lineWidth = 0.5;
         ctx.stroke();
 
-        // ── Head: eyes ─────────────────────────────────────
+        // ── Head: eyes ─────────────────────────────────
         if (i === 0) {
           const eyeR = segSize * 0.18;
           const dir = snake.dir || { x: 1, y: 0 };
@@ -362,7 +314,7 @@ function draw() {
           ctx.arc(e2x, e2y, eyeR * 1.3, 0, Math.PI * 2);
           ctx.fill();
 
-          // Pupils — look forward
+          // Pupils
           const px = dir.x * eyeR * 0.4,
             py = dir.y * eyeR * 0.4;
           ctx.fillStyle = "#111";
@@ -393,7 +345,7 @@ function draw() {
       }
     }
 
-    // ── Particles ────────────────────────────────────────────
+    // ── Particles ───────────────────────────────────────
     for (const p of s.particles || []) {
       ctx.fillStyle = p.color
         .replace(")", `,${p.life})`)
@@ -407,7 +359,7 @@ function draw() {
     requestAnimationFrame(draw);
   } catch (e) {
     console.error("[Slither] draw error:", e.message, e.stack);
-    requestAnimationFrame(draw); // keep the loop alive
+    requestAnimationFrame(draw);
   }
 }
 
@@ -416,6 +368,5 @@ draw();
 console.log(
   "[Slither] Ready — player:",
   name,
-  "| loop:",
-  Object.keys(loop).join(", "),
+  "| using @uploop/core createLoop",
 );

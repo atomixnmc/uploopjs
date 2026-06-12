@@ -28,6 +28,9 @@ export function createApp(options = {}) {
     if (url.pathname.startsWith("/public/")) {
       return serveStatic(res, url.pathname);
     }
+    if (url.pathname.startsWith("/packages/")) {
+      return serveFile(res, join(__dirname, "..", url.pathname));
+    }
     return routeHandler(req, res);
   });
 
@@ -172,7 +175,10 @@ const MIME = {
 };
 
 function serveStatic(res, pathname) {
-  const filePath = join(PUBLIC_DIR, pathname.replace("/public/", ""));
+  return serveFile(res, join(PUBLIC_DIR, pathname.replace("/public/", "")));
+}
+
+function serveFile(res, filePath) {
   if (!existsSync(filePath)) {
     res.writeHead(404);
     return res.end("Not found");

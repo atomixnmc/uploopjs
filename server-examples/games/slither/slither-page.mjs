@@ -33,5 +33,5 @@ export const SlitherPage = component("SlitherPage", {
  * Loaded as a static file — same pattern as chess-client.js.
  */
 export function slitherClientScript() {
-  return `<script src="/public/slither-client.js"></script>`;
+  return `<script type="module" src="/public/slither-client.js"><\/script>`;
 }

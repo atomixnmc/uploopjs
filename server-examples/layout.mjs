@@ -19,6 +19,9 @@ export function wrapPage(title, content, activePath = "/") {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — Uploop SST</title>
+  <script type="importmap">
+    { "imports": { "@uploop/core": "/packages/core/src/index.js" } }
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0 }
     body {
