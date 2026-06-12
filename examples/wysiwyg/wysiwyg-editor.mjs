@@ -11,7 +11,7 @@
  *   WysiwygEditor.getContent()                // read current value
  */
 
-import { component } from "@uploop/core";
+import { component } from "@uploop/html";
 import { html } from "@uploop/html";
 
 // ── Closure state (survives innerHTML re-renders) ──────────

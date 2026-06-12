@@ -5,7 +5,7 @@
  *   import { WysiwygEditor } from 'uploop:wysiwyg'
  */
 
-import { component } from "@uploop/core";
+import { component } from "@uploop/html";
 import { html } from "@uploop/html";
 import { WysiwygEditor } from "uploop:wysiwyg";
 
