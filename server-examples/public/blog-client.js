@@ -1,155 +1,139 @@
 /**
  * Blog Client — CMS with WYSIWYG editor + media blocks
  *
- * Imports reusable components from the Uploop ecosystem via import map:
- *   import { WysiwygEditor } from 'uploop:wysiwyg'
+ * Architecture:
+ *   - SSR renders shell (title input + mount div + save button)
+ *   - Client creates WYSIWYG toolbar + contenteditable via vanilla DOM
+ *   - Save via fetch to /api/blog (Uploop createService backend)
+ *   - Import map provides @uploop/core, @uploop/html, uploop:wysiwyg
  */
 
-import { component } from "@uploop/html";
-import { html } from "@uploop/html";
-import { WysiwygEditor } from "uploop:wysiwyg";
+// ── Toolbar HTML ───────────────────────────────────────────
 
-// ── BlogEditor CMS component ───────────────────────────────
+const TOOLBAR_HTML = `
+  <div class="up-wysiwyg-toolbar" style="display:flex;gap:4px;padding:0.5rem;background:#f5f5f5;border:2px solid #ddd;border-bottom:none;border-radius:8px 8px 0 0;flex-wrap:wrap;align-items:center">
+    <button data-cmd="bold" title="Bold (Ctrl+B)" style="padding:0.3rem 0.5rem;font-weight:bold;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;min-width:28px;font-size:0.8rem">B</button>
+    <button data-cmd="italic" title="Italic (Ctrl+I)" style="padding:0.3rem 0.5rem;font-style:italic;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;min-width:28px;font-size:0.8rem">I</button>
+    <button data-cmd="underline" title="Underline (Ctrl+U)" style="padding:0.3rem 0.5rem;text-decoration:underline;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;min-width:28px;font-size:0.8rem">U</button>
+    <span style="width:1px;background:#ddd;margin:0 4px"></span>
+    <button data-cmd="formatBlock" data-arg="h2" title="Heading 2" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem;font-weight:700">H2</button>
+    <button data-cmd="formatBlock" data-arg="h3" title="Heading 3" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem;font-weight:700">H3</button>
+    <span style="width:1px;background:#ddd;margin:0 4px"></span>
+    <button data-cmd="insertUnorderedList" title="Bullet List" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">≡•</button>
+    <button data-cmd="insertOrderedList" title="Numbered List" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">≡1</button>
+    <span style="width:1px;background:#ddd;margin:0 4px"></span>
+    <button data-cmd="createLink" title="Insert Link" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🔗</button>
+    <button data-cmd="unlink" title="Remove Link" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🔓</button>
+    <span style="width:1px;background:#ddd;margin:0 4px"></span>
+    <button data-media="image" title="Insert Image" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🖼</button>
+    <button data-media="carousel" title="Insert Carousel" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🎠</button>
+    <button data-media="audio" title="Insert Audio" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🎵</button>
+    <button data-media="video" title="Insert Video" style="padding:0.3rem 0.5rem;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:0.8rem">🎬</button>
+  </div>`;
 
-const BlogEditor = component("BlogEditor", {
-  state: {
-    title: "",
-    author: "Team",
-    saving: false,
-    saved: false,
-    savedId: null,
-    mode: "create",
-    postId: null,
-  },
+// ── Create WYSIWYG editor in mount div ────────────────────
 
-  update: {
-    setTitle: (s, v) => ({ title: v }),
-    setSaving: (s, v) => ({ saving: v }),
-    setSaved: (s, { id }) => ({ saved: true, saving: false, savedId: id }),
-    setMode: (s, { mode, post }) => ({
-      mode,
-      postId: post?.id || null,
-      title: post?.title || "",
-      author: post?.author || "Team",
-      saved: false,
-    }),
-  },
-
-  view: (s, { send }) => {
-    return html`
-      <div
-        id="blog-editor-root"
-        style="max-width:750px;margin:0 auto;padding:2rem;font-family:system-ui"
-      >
-        <a
-          href="/blog"
-          style="color:#646cff;text-decoration:none;font-size:0.85rem"
-          >← Back to blog</a
-        >
-        <h2 style="margin:0.5rem 0">
-          ${s.mode === "edit" ? "✏️ Edit Post" : "✏️ New Blog Post"}
-        </h2>
-
-        <input
-          id="be-title"
-          type="text"
-          placeholder="Post title..."
-          value="${s.title}"
-          style="width:100%;padding:0.6rem;font-size:1.2rem;border:2px solid #ddd;border-radius:8px;margin-bottom:0.75rem;outline:none;font-weight:600"
-          oninput="${(e) => send("setTitle", e.target.value)}"
-        />
-
-        <div id="be-wysiwyg-mount"></div>
-
-        <div
-          id="be-media-dialog"
-          style="display:none;margin:1rem 0;padding:1rem;background:#f8f8ff;border:1px solid #e0e0ff;border-radius:8px"
-        >
-          <div
-            style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem"
-          >
-            <strong>Insert Media</strong>
-            <button
-              id="be-media-close"
-              style="border:none;background:none;cursor:pointer;font-size:1.2rem"
-            >
-              &times;
-            </button>
-          </div>
-          <div
-            id="be-media-form"
-            style="display:flex;flex-direction:column;gap:0.5rem"
-          ></div>
-        </div>
-
-        <div
-          style="display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem"
-        >
-          <span style="font-size:0.8rem;color:#888"
-            >${s.saving
-              ? "⏳ Saving..."
-              : s.saved
-                ? `✅ Saved! Post #${s.savedId}`
-                : "Ready"}</span
-          >
-          <button
-            id="be-save"
-            style="padding:0.5rem 1.5rem;background:#10ac84;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.9rem;font-weight:600"
-            disabled="${s.saving}"
-          >
-            ${s.saving ? "Saving..." : "💾 Publish"}
-          </button>
-        </div>
-      </div>
-    `;
-  },
-});
-
-// ── WYSIWYG setup ──────────────────────────────────────────
-
-let _wysiwygMounted = false;
-
-function setupWysiwyg(initialBody) {
+function createWysiwyg(initialHTML) {
   const mount = document.getElementById("be-wysiwyg-mount");
-  if (!mount) {
-    console.error("[Blog] ERROR: #be-wysiwyg-mount not found in DOM");
-    return;
+  if (!mount) return console.error("[Blog] #be-wysiwyg-mount not found");
+
+  // Build the WYSIWYG HTML
+  mount.innerHTML = `
+    <div class="up-wysiwyg" style="font-family:system-ui">
+      ${TOOLBAR_HTML}
+      <div class="up-wysiwyg-body" contenteditable="true"
+        style="min-height:250px;padding:1rem;border:2px solid #ddd;border-top:none;border-radius:0 0 8px 8px;outline:none;background:#fff;font-size:1rem;line-height:1.7;color:#333"
+      ></div>
+    </div>`;
+
+  const body = mount.querySelector(".up-wysiwyg-body");
+
+  // Set initial content
+  if (initialHTML && body) {
+    body.innerHTML = initialHTML;
   }
 
-  if (!_wysiwygMounted) {
-    try {
-      WysiwygEditor.mount(mount);
-      _wysiwygMounted = true;
-      console.log("[Blog] WYSIWYG mounted successfully");
-    } catch (e) {
-      console.error("[Blog] ERROR mounting WYSIWYG:", e.message, e.stack);
-      return;
-    }
+  // Wire toolbar buttons
+  const toolbar = mount.querySelector(".up-wysiwyg-toolbar");
+  if (toolbar) {
+    toolbar.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      e.preventDefault();
+
+      const cmd = btn.dataset.cmd;
+      const mediaType = btn.dataset.media;
+
+      if (mediaType) {
+        showMediaDialog(mediaType);
+        return;
+      }
+
+      if (cmd === "createLink") {
+        const url = prompt("Link URL:", "https://");
+        if (url) document.execCommand(cmd, false, url);
+      } else if (cmd) {
+        document.execCommand(cmd, false, btn.dataset.arg || null);
+      }
+    });
   }
 
-  // Set content using closure-based API (survives re-renders)
-  if (initialBody) {
-    WysiwygEditor.setContent(initialBody);
-    console.log("[Blog] WYSIWYG content set, length:", initialBody.length);
+  // Keyboard shortcuts
+  if (body) {
+    body.addEventListener("keydown", (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        const map = { b: "bold", i: "italic", u: "underline", k: "createLink" };
+        const cmd = map[e.key];
+        if (cmd) {
+          e.preventDefault();
+          if (cmd === "createLink") {
+            const url = prompt("Link URL:", "https://");
+            if (url) document.execCommand(cmd, false, url);
+          } else {
+            document.execCommand(cmd);
+          }
+        }
+      }
+    });
   }
 
-  // Hook media insertion events
-  if (!mount._mediaHooked) {
-    mount._mediaHooked = true;
-    mount.addEventListener("up-media-insert", (e) =>
-      showMediaDialog(e.detail.type),
-    );
-  }
+  console.log(
+    "[Blog] WYSIWYG editor created" + (initialHTML ? " with content" : ""),
+  );
+  return body;
+}
+
+// ── Get current WYSIWYG content ───────────────────────────
+
+function getWysiwygContent() {
+  const body = document.querySelector(".up-wysiwyg-body");
+  return body ? body.innerHTML : "";
 }
 
 // ── Media dialog ───────────────────────────────────────────
 
 function showMediaDialog(type) {
-  const dialog = document.getElementById("be-media-dialog");
-  const form = document.getElementById("be-media-form");
-  if (!dialog || !form) return;
-  dialog.style.display = "block";
+  let dialog = document.getElementById("be-media-dialog");
+  if (!dialog) {
+    dialog = document.createElement("div");
+    dialog.id = "be-media-dialog";
+    dialog.style.cssText =
+      "display:none;margin:1rem 0;padding:1rem;background:#f8f8ff;border:1px solid #e0e0ff;border-radius:8px";
+    dialog.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+        <strong>Insert Media</strong>
+        <button id="be-media-close" style="border:none;background:none;cursor:pointer;font-size:1.2rem">&times;</button>
+      </div>
+      <div id="be-media-form" style="display:flex;flex-direction:column;gap:0.5rem"></div>`;
+    document
+      .getElementById("blog-editor-root")
+      .insertBefore(dialog, document.getElementById("be-save").parentNode);
+    dialog.querySelector("#be-media-close").onclick = () => {
+      dialog.style.display = "none";
+    };
+  }
 
+  const form = dialog.querySelector("#be-media-form");
   const fields = {
     image: `<label>Image URL</label><input id=mf-src placeholder=https://... style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
       <label>Alt</label><input id=mf-alt placeholder=Description style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
@@ -166,90 +150,76 @@ function showMediaDialog(type) {
       <label>Creator</label><input id=mf-artist placeholder=Creator style=padding:.4rem;border:1px solid #ccc;border-radius:4px>
       <button id=mf-insert style=padding:.4rem;background:#646cff;color:#fff;border:none;border-radius:4px;cursor:pointer>Insert Video</button>`,
   };
-
   form.innerHTML = fields[type] || "";
   form.dataset.mediaType = type;
-  document.getElementById("be-media-close").onclick = () => {
-    dialog.style.display = "none";
-  };
+  dialog.style.display = "block";
 }
 
-function insertMediaPlaceholder(type, props) {
+// ── Insert media placeholder ──────────────────────────────
+
+document.addEventListener("click", (e) => {
+  if (e.target.id !== "mf-insert") return;
+  const dialog = document.getElementById("be-media-dialog");
+  const form = document.getElementById("be-media-form");
+  const type = form.dataset.mediaType;
+  const g = (id) => document.getElementById(id)?.value || "";
+
   const body = document.querySelector(".up-wysiwyg-body");
   if (!body) return;
 
   let html;
   if (type === "image") {
-    html = `<div data-media="image" data-src="${props.src}" data-alt="${props.alt}" data-caption="${props.caption}" contenteditable="false" style="display:block;margin:1rem 0"><img src="${props.src}" alt="${props.alt}" style="max-width:100%;border-radius:8px;pointer-events:none"><em style="display:block;text-align:center;font-size:.85rem;color:#888;margin-top:.25rem">${props.caption}</em></div>`;
+    html = `<div data-media="image" data-src="${g("mf-src")}" data-alt="${g("mf-alt")}" data-caption="${g("mf-caption")}" contenteditable="false" style="display:block;margin:1rem 0"><img src="${g("mf-src")}" alt="${g("mf-alt")}" style="max-width:100%;border-radius:8px;pointer-events:none"><em style="display:block;text-align:center;font-size:.85rem;color:#888;margin-top:.25rem">${g("mf-caption")}</em></div>`;
   } else if (type === "carousel") {
-    const attrs = props.urls.map((u, i) => `data-img${i}="${u}"`).join(" ");
-    html = `<div data-media="carousel" ${attrs} contenteditable="false" style="display:block;margin:1rem 0;padding:2rem;text-align:center;background:#f0f0f5;border-radius:8px;color:#888"><em>🎠 Carousel (${props.urls.length} images)</em></div>`;
-  } else {
-    html = `<div data-media="${type}" data-src="${props.src}" data-title="${props.title}" data-artist="${props.artist}" contenteditable="false" style="display:block;margin:1rem 0"><em>${type === "audio" ? "🎵" : "🎬"} ${props.title || type}</em></div>`;
-  }
-
-  body.focus();
-  document.execCommand("insertHTML", false, html);
-}
-
-// ── Media form handler ────────────────────────────────────
-
-document.addEventListener("click", (e) => {
-  if (e.target.id !== "mf-insert") return;
-  const form = document.getElementById("be-media-form");
-  const dialog = document.getElementById("be-media-dialog");
-  const type = form.dataset.mediaType;
-  const g = (id) => document.getElementById(id)?.value || "";
-
-  if (type === "image")
-    insertMediaPlaceholder("image", {
-      src: g("mf-src"),
-      alt: g("mf-alt"),
-      caption: g("mf-caption"),
-    });
-  else if (type === "carousel") {
     const urls = g("mf-urls")
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (urls.length) insertMediaPlaceholder("carousel", { urls });
-  } else
-    insertMediaPlaceholder(type, {
-      src: g("mf-src"),
-      title: g("mf-title"),
-      artist: g("mf-artist"),
-    });
+    const attrs = urls.map((u, i) => `data-img${i}="${u}"`).join(" ");
+    html = `<div data-media="carousel" ${attrs} contenteditable="false" style="display:block;margin:1rem 0;padding:2rem;text-align:center;background:#f0f0f5;border-radius:8px;color:#888"><em>🎠 Carousel (${urls.length} images)</em></div>`;
+  } else {
+    html = `<div data-media="${type}" data-src="${g("mf-src")}" data-title="${g("mf-title")}" data-artist="${g("mf-artist")}" contenteditable="false" style="display:block;margin:1rem 0"><em>${type === "audio" ? "🎵" : "🎬"} ${g("mf-title") || type}</em></div>`;
+  }
+
+  body.focus();
+  document.execCommand("insertHTML", false, html);
   dialog.style.display = "none";
 });
 
 // ── Save ───────────────────────────────────────────────────
 
 async function handleSave() {
-  const s = BlogEditor.get();
-  if (!s.title.trim()) return alert("Please enter a title.");
-  if (s.saving) return;
+  const title = document.getElementById("be-title")?.value?.trim();
+  if (!title) return alert("Please enter a title.");
 
-  BlogEditor.send("setSaving", true);
+  const saveBtn = document.getElementById("be-save");
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving...";
+  }
+
   try {
-    const body = WysiwygEditor.getContent();
-    const url =
-      s.mode === "edit" && s.postId ? `/api/blog/${s.postId}` : "/api/blog";
-    const method = s.mode === "edit" ? "PUT" : "POST";
+    const body = getWysiwygContent();
+    const path = window.location.pathname;
+    const editMatch = path.match(/^\/blog\/(.+)\/edit$/);
+    const url = editMatch ? `/api/blog/${editMatch[1]}` : "/api/blog";
+    const method = editMatch ? "PUT" : "POST";
+
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: s.title, body, author: s.author }),
+      body: JSON.stringify({ title, body, author: "Team" }),
     });
     if (!res.ok) throw new Error("Server error: " + res.status);
     const post = await res.json();
-    BlogEditor.send("setSaved", { id: post.id });
-    setTimeout(() => {
-      window.location.href = "/blog/" + post.id;
-    }, 800);
+    window.location.href = "/blog/" + post.id;
   } catch (e) {
     console.error("Save failed:", e);
     alert("Failed to save: " + e.message);
-    BlogEditor.send("setSaving", false);
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "💾 Publish";
+    }
   }
 }
 
@@ -259,26 +229,38 @@ const root = document.getElementById("blog-editor-root");
 if (!root) {
   console.log("[Blog] Not on editor page");
 } else {
-  BlogEditor.mount(root);
-
   const path = window.location.pathname;
-  const editMatch = path.match(/^\/blog\/(\d+)\/edit$/);
+  const editMatch = path.match(/^\/blog\/(.+)\/edit$/);
 
   if (editMatch) {
+    // Edit mode: fetch post, then create WYSIWYG with content
+    console.log("[Blog] Edit mode, fetching post:", editMatch[1]);
     fetch(`/api/blog/${editMatch[1]}`)
       .then((r) => r.json())
       .then((post) => {
-        BlogEditor.send("setMode", { mode: "edit", post });
-        requestAnimationFrame(() => setupWysiwyg(post.body));
+        console.log(
+          "[Blog] Post loaded:",
+          post.id,
+          post.title,
+          "body length:",
+          (post.body || "").length,
+        );
+        document.getElementById("be-title").value = post.title || "";
+        createWysiwyg(post.body);
       })
-      .catch(() => requestAnimationFrame(() => setupWysiwyg()));
+      .catch((err) => {
+        console.error("[Blog] Failed to load post:", err);
+        createWysiwyg();
+      });
   } else {
-    requestAnimationFrame(() => setupWysiwyg());
+    // Create mode
+    createWysiwyg();
   }
 
+  // Wire save button
   document.addEventListener("click", (e) => {
     if (e.target.id === "be-save") handleSave();
   });
 
-  console.log("[Blog] CMS ready — WYSIWYG with closure-based state");
+  console.log("[Blog] CMS ready — vanilla DOM WYSIWYG");
 }

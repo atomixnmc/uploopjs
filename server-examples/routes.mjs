@@ -8,7 +8,7 @@ import {
   BlogEditor,
   blogClientScript,
 } from "./components/blog.mjs";
-import { blogService, getBlogGraph } from "./services/blog.mjs";
+import { blogService } from "./services/blog.mjs";
 import { TodoList, todosClientScript } from "./components/todos.mjs";
 import { ChatPage, chatClientScript } from "./components/chat.mjs";
 import { CSSDemo } from "./components/css-demo.mjs";
@@ -62,11 +62,12 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
       }
       if (path.startsWith("/blog/")) {
         const parts = path.split("/");
-        const id = parts[2];
+        const slug = parts[2];
         const isEdit = parts[3] === "edit";
 
-        // Edit mode — SSR editor shell, client loads existing post
-        if (isEdit) {
+        if (!slug) {
+          /* /blog/ with nothing after */
+        } else if (isEdit) {
           return ok(
             res,
             wrapPage(
@@ -77,13 +78,13 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
           );
         }
 
-        const post = await blogService.get(id);
+        const post = await blogService.get(slug);
         if (!post)
           return ok(
             res,
             wrapPage(
               "Blog Post",
-              renderToString(BlogDetail, { id: "" }),
+              renderToString(BlogDetail, { id: "", slug: "" }),
               "/blog",
             ),
           );
@@ -92,7 +93,8 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
           wrapPage(
             "Blog Post",
             renderToString(BlogDetail, {
-              id: String(post.id),
+              id: post.id,
+              slug: post.slug,
               title: post.title,
               body: post.body,
               author: post.author,
@@ -177,10 +179,9 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
           },
           blog: {
             graph: blogService.loop,
-            desc: "Blog data loop — createLoop + createService pattern",
+            desc: "Blog data loop — UUID ids, slugs, createService pattern",
             events: blogService.loop.events || { total: 0, rejected: 0 },
             state: blogService.find(),
-            graphJSON: getBlogGraph(),
           },
         };
         return ok(
@@ -221,15 +222,15 @@ export function setupRoutes({ todoService, chatLoop, chessGame, slitherGame }) {
           json(res, await blogService.create(JSON.parse(data)), 201),
         );
       }
-      if (path.match(/^\/api\/blog\/\d+$/) && req.method === "GET") {
-        const id = path.split("/")[3];
-        const post = blogService.get(id);
+      if (path.match(/^\/api\/blog\/[^/]+$/) && req.method === "GET") {
+        const slug = path.split("/")[3];
+        const post = await blogService.get(slug);
         return post ? json(res, post) : json(res, { error: "Not found" }, 404);
       }
-      if (path.match(/^\/api\/blog\/\d+$/) && req.method === "PUT") {
-        const id = path.split("/")[3];
+      if (path.match(/^\/api\/blog\/[^/]+$/) && req.method === "PUT") {
+        const slug = path.split("/")[3];
         return readBody(req).then(async (data) =>
-          json(res, await blogService.update(id, JSON.parse(data))),
+          json(res, await blogService.update(slug, JSON.parse(data))),
         );
       }
       if (path === "/api/todos" && req.method === "GET")

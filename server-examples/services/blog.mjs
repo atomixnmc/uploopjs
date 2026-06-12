@@ -1,142 +1,161 @@
 /**
- * Blog Service — Uploop createLoop + createService pattern
+ * Blog Service — Uploop createLoop + createService + UUID + slugs
  *
- * Demonstrates the core Uploop data architecture:
- *
- *   createLoop({ state, update }) → the data store
- *   createService(loop, methods)  → CRUD interface
- *   loop.graph.describe()         → HyperGraph JSON
- *
- * The loop IS the data source. SQLite is used only for
- * persistence (seed on startup, optional sync).
+ *   createLoop({ state, update }) → data store with UUID ids
+ *   createService(loop, methods)  → FeathersJS CRUD
+ *   uuid() from @uploop/core     → RFC 4122 v4 post IDs
+ *   slug from title               → /blog/my-post-title
  */
 
-import { createLoop } from "@uploop/core";
+import { createLoop, uuid } from "@uploop/core";
 import { createService } from "@uploop/sst";
 import { getDB } from "../db/schema.js";
+
+// ── Slug helper ────────────────────────────────────────────
+
+function slugify(title) {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .substring(0, 80);
+}
+
+function uniqueSlug(posts, title, excludeId) {
+  let base = slugify(title) || "post";
+  let slug = base;
+  let n = 1;
+  while (posts.some((p) => p.slug === slug && p.id !== excludeId)) {
+    slug = `${base}-${++n}`;
+  }
+  return slug;
+}
+
+// ── Migrate SQLite schema ──────────────────────────────────
+
+const db = getDB();
+// Add slug column if it doesn't exist (safe migration)
+try {
+  db.exec("ALTER TABLE posts ADD COLUMN slug TEXT");
+} catch (e) {
+  /* already exists */
+}
+// Generate slugs for existing posts that don't have one
+const unslugged = db
+  .prepare("SELECT id, title FROM posts WHERE slug IS NULL OR slug = ''")
+  .all();
+for (const row of unslugged) {
+  const slug = slugify(row.title) || "post-" + row.id;
+  db.prepare("UPDATE posts SET slug = ? WHERE id = ?").run(slug, row.id);
+}
 
 // ── Blog data loop ─────────────────────────────────────────
 
 const blogLoop = createLoop({
-  state: {
-    posts: [], // [{ id, title, body, author, created_at }]
-    nextId: 1,
-  },
-
+  state: { posts: [], nextId: 1 },
   update: {
-    /** CRUD: create a new post */
     _create(s, { title, body, author }) {
+      const slug = uniqueSlug(s.posts, title);
       const post = {
-        id: s.nextId,
+        id: uuid(),
         title,
+        slug,
         body: body || "",
         author: author || "Team",
         created_at: new Date().toISOString(),
       };
-      return { posts: [post, ...s.posts], nextId: s.nextId + 1 };
+      return { posts: [post, ...s.posts] };
     },
-
-    /** CRUD: update an existing post */
     _update(s, { id, title, body, author }) {
       return {
-        posts: s.posts.map((p) =>
-          p.id === id
-            ? { ...p, title: title || p.title, body: body ?? p.body, author: author || p.author }
-            : p,
-        ),
+        posts: s.posts.map((p) => {
+          if (p.id !== id) return p;
+          const newTitle = title || p.title;
+          const slug = title ? uniqueSlug(s.posts, newTitle, id) : p.slug;
+          return {
+            ...p,
+            title: newTitle,
+            slug,
+            body: body ?? p.body,
+            author: author || p.author,
+          };
+        }),
       };
     },
-
-    /** CRUD: remove a post */
     _remove(s, id) {
       return { posts: s.posts.filter((p) => p.id !== id) };
     },
-
-    /** Seed from SQLite on startup */
     _seed(s, rows) {
       if (s.posts.length > 0) return s;
       const posts = rows.map((r) => ({
-        id: r.id,
+        id: r.id || uuid(),
         title: r.title,
+        slug: r.slug || slugify(r.title),
         body: r.body,
         author: r.author,
         created_at: r.created_at,
       }));
-      const maxId = posts.reduce((max, p) => Math.max(max, p.id), 0);
-      return { posts, nextId: maxId + 1 };
+      return { posts };
     },
   },
 });
 
 // ── Seed from SQLite ───────────────────────────────────────
 
-const db = getDB();
 const rows = db.prepare("SELECT * FROM posts ORDER BY created_at DESC").all();
-if (rows.length > 0) {
-  blogLoop.send("_seed", rows);
-}
+if (rows.length > 0) blogLoop.send("_seed", rows);
 
-// ── Service wrapper (FeathersJS-style) ─────────────────────
+// ── Service ────────────────────────────────────────────────
 
 export const blogService = createService(blogLoop, {
   methods: {
-    /** List all posts */
     find: () => blogLoop.get().posts,
-
-    /** Get single post by id */
-    get: (id) => blogLoop.get().posts.find((p) => p.id === Number(id)) || null,
-
-    /** Create a new post (loop + SQLite) */
+    get: (idOrSlug) => {
+      const posts = blogLoop.get().posts;
+      return (
+        posts.find(
+          (p) =>
+            p.id === idOrSlug ||
+            p.slug === idOrSlug ||
+            String(p.id) === idOrSlug,
+        ) || null
+      );
+    },
     create: (data) => {
       blogLoop.send("_create", data);
       const post = blogLoop.get().posts[0];
-      // Persist to SQLite
-      db.prepare("INSERT INTO posts (title, body, author) VALUES (?, ?, ?)").run(
-        post.title, post.body, post.author,
+      db.prepare(
+        "INSERT INTO posts (id, title, slug, body, author) VALUES (?, ?, ?, ?, ?)",
+      ).run(post.id, post.title, post.slug, post.body, post.author);
+      return post;
+    },
+    update: (idOrSlug, data) => {
+      const posts = blogLoop.get().posts;
+      const existing = posts.find(
+        (p) =>
+          p.id === idOrSlug || p.slug === idOrSlug || String(p.id) === idOrSlug,
       );
+      if (!existing) return null;
+      blogLoop.send("_update", { id: existing.id, ...data });
+      const post = blogLoop.get().posts.find((p) => p.id === existing.id);
+      if (post)
+        db.prepare(
+          "UPDATE posts SET title=?, slug=?, body=?, author=? WHERE id=?",
+        ).run(post.title, post.slug, post.body, post.author, post.id);
       return post;
     },
-
-    /** Update an existing post */
-    update: (id, data) => {
-      blogLoop.send("_update", { id: Number(id), ...data });
-      const post = blogLoop.get().posts.find((p) => p.id === Number(id));
-      if (post) {
-        db.prepare("UPDATE posts SET title = ?, body = ?, author = ? WHERE id = ?").run(
-          post.title, post.body, post.author, post.id,
-        );
-      }
-      return post;
-    },
-
-    /** Remove a post */
-    remove: (id) => {
-      blogLoop.send("_remove", Number(id));
-      db.prepare("DELETE FROM posts WHERE id = ?").run(Number(id));
-      return { id: Number(id) };
+    remove: (idOrSlug) => {
+      const posts = blogLoop.get().posts;
+      const existing = posts.find(
+        (p) =>
+          p.id === idOrSlug || p.slug === idOrSlug || String(p.id) === idOrSlug,
+      );
+      if (!existing) return { id: idOrSlug };
+      blogLoop.send("_remove", existing.id);
+      db.prepare("DELETE FROM posts WHERE id = ?").run(existing.id);
+      return { id: existing.id };
     },
   },
 });
-
-// ── HyperGraph export ──────────────────────────────────────
-//
-// Every Uploop loop can describe itself as a typed graph:
-//
-//   blogLoop.describe() → {
-//     nodes: {
-//       posts:   { type: 'state', reads: [...], writes: [...] },
-//       _create: { type: 'update', ... },
-//       _update: { type: 'update', ... },
-//       ...
-//     },
-//     edges: [...]
-//   }
-//
-// This is the foundation for devtools, AI generation, and
-// visual editing. Export it for the /hypergraph dashboard.
-
-export function getBlogGraph() {
-  return blogLoop.describe ? blogLoop.describe() : { nodes: {}, edges: [] };
-}
 
 export { blogLoop };

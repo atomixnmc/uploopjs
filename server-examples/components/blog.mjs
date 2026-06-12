@@ -31,7 +31,7 @@ export const BlogList = component("BlogList", {
             style="padding:1rem;margin-bottom:0.5rem;border:1px solid #eee;border-radius:8px"
           >
             <a
-              href="/blog/${p.id}"
+              href="/blog/${p.slug || p.id}"
               style="font-size:1.1rem;color:#646cff;text-decoration:none;font-weight:600"
               >${p.title}</a
             >
@@ -48,7 +48,7 @@ export const BlogList = component("BlogList", {
 // ── BlogDetail (SSR) ───────────────────────────────────────
 
 export const BlogDetail = component("BlogDetail", {
-  state: { id: "", title: "", body: "", author: "", created_at: "" },
+  state: { id: "", slug: "", title: "", body: "", author: "", created_at: "" },
   view: (s) => {
     if (!s.title)
       return html`<div style="padding:2rem;text-align:center">
@@ -63,7 +63,7 @@ export const BlogDetail = component("BlogDetail", {
             >← Back to blog</a
           >
           <a
-            href="/blog/${s.id}/edit"
+            href="/blog/${s.slug || s.id}/edit"
             style="color:#10ac84;text-decoration:none;font-size:0.85rem;margin-left:auto"
             >✏ Edit</a
           >
@@ -138,5 +138,5 @@ export const BlogEditor = component("BlogEditor", {
 // The SAME component definition is used for SSR and client mount.
 
 export function blogClientScript() {
-  return `<script type="module" src="/public/blog-client.js"><\\/script>`;
+  return `<script type="module" src="/public/blog-client.js"></script>`;
 }
