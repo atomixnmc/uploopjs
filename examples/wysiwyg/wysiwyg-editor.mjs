@@ -49,31 +49,110 @@ export const WysiwygEditor = component("WysiwygEditor", {
     return html`
       <div class="up-wysiwyg" style="font-family:system-ui">
         ${s.toolbar && !s.readOnly
-          ? html`<div class="up-wysiwyg-toolbar" style="display:flex;gap:4px;padding:0.5rem;background:#f5f5f5;border:2px solid #ddd;border-bottom:none;border-radius:8px 8px 0 0;flex-wrap:wrap;align-items:center">
-            <button data-cmd="bold" title="Bold (Ctrl+B)" style="${tbBtn};font-weight:bold">B</button>
-            <button data-cmd="italic" title="Italic (Ctrl+I)" style="${tbBtn};font-style:italic">I</button>
-            <button data-cmd="underline" title="Underline (Ctrl+U)" style="${tbBtn};text-decoration:underline">U</button>
-            <button data-cmd="strikeThrough" title="Strikethrough" style="${tbBtn};text-decoration:line-through">S</button>
-            ${sep}
-            <button data-cmd="formatBlock" data-arg="h2" title="Heading 2" style="${tbBtn};font-weight:700">H2</button>
-            <button data-cmd="formatBlock" data-arg="h3" title="Heading 3" style="${tbBtn};font-weight:700">H3</button>
-            ${sep}
-            <button data-cmd="insertUnorderedList" title="Bullet List" style="${tbBtn}">≡•</button>
-            <button data-cmd="insertOrderedList" title="Numbered List" style="${tbBtn}">≡1</button>
-            ${sep}
-            <button data-cmd="createLink" title="Insert Link" style="${tbBtn}">🔗</button>
-            <button data-cmd="unlink" title="Remove Link" style="${tbBtn}">🔓</button>
-            ${sep}
-            <button data-media="image" title="Insert Image" style="${tbBtn}">🖼</button>
-            <button data-media="carousel" title="Insert Carousel" style="${tbBtn}">🎠</button>
-            <button data-media="audio" title="Insert Audio" style="${tbBtn}">🎵</button>
-            <button data-media="video" title="Insert Video" style="${tbBtn}">🎬</button>
-          </div>`
+          ? html`<div
+              class="up-wysiwyg-toolbar"
+              style="display:flex;gap:4px;padding:0.5rem;background:#f5f5f5;border:2px solid #ddd;border-bottom:none;border-radius:8px 8px 0 0;flex-wrap:wrap;align-items:center"
+            >
+              <button
+                data-cmd="bold"
+                title="Bold (Ctrl+B)"
+                style="${tbBtn};font-weight:bold"
+              >
+                B
+              </button>
+              <button
+                data-cmd="italic"
+                title="Italic (Ctrl+I)"
+                style="${tbBtn};font-style:italic"
+              >
+                I
+              </button>
+              <button
+                data-cmd="underline"
+                title="Underline (Ctrl+U)"
+                style="${tbBtn};text-decoration:underline"
+              >
+                U
+              </button>
+              <button
+                data-cmd="strikeThrough"
+                title="Strikethrough"
+                style="${tbBtn};text-decoration:line-through"
+              >
+                S
+              </button>
+              ${sep}
+              <button
+                data-cmd="formatBlock"
+                data-arg="h2"
+                title="Heading 2"
+                style="${tbBtn};font-weight:700"
+              >
+                H2
+              </button>
+              <button
+                data-cmd="formatBlock"
+                data-arg="h3"
+                title="Heading 3"
+                style="${tbBtn};font-weight:700"
+              >
+                H3
+              </button>
+              ${sep}
+              <button
+                data-cmd="insertUnorderedList"
+                title="Bullet List"
+                style="${tbBtn}"
+              >
+                ≡•
+              </button>
+              <button
+                data-cmd="insertOrderedList"
+                title="Numbered List"
+                style="${tbBtn}"
+              >
+                ≡1
+              </button>
+              ${sep}
+              <button
+                data-cmd="createLink"
+                title="Insert Link"
+                style="${tbBtn}"
+              >
+                🔗
+              </button>
+              <button data-cmd="unlink" title="Remove Link" style="${tbBtn}">
+                🔓
+              </button>
+              ${sep}
+              <button data-media="image" title="Insert Image" style="${tbBtn}">
+                🖼
+              </button>
+              <button
+                data-media="carousel"
+                title="Insert Carousel"
+                style="${tbBtn}"
+              >
+                🎠
+              </button>
+              <button data-media="audio" title="Insert Audio" style="${tbBtn}">
+                🎵
+              </button>
+              <button data-media="video" title="Insert Video" style="${tbBtn}">
+                🎬
+              </button>
+            </div>`
           : ""}
         <div
           class="up-wysiwyg-body"
           contenteditable="${s.readOnly ? "false" : "true"}"
-          style="min-height:${s.readOnly ? "auto" : "250px"};padding:1rem;border:2px solid #ddd;${s.toolbar ? "border-top:none;" : "border-radius:8px;"}${s.readOnly ? "border-radius:0 0 8px 8px;" : "border-radius:0 0 8px 8px;"}outline:none;background:#fff;font-size:1rem;line-height:1.7;color:#333"
+          style="min-height:${s.readOnly
+            ? "auto"
+            : "250px"};padding:1rem;border:2px solid #ddd;${s.toolbar
+            ? "border-top:none;"
+            : "border-radius:8px;"}${s.readOnly
+            ? "border-radius:0 0 8px 8px;"
+            : "border-radius:0 0 8px 8px;"}outline:none;background:#fff;font-size:1rem;line-height:1.7;color:#333"
           @input="${(e) => send("setValue", e.target.innerHTML)}"
         ></div>
       </div>
@@ -92,10 +171,11 @@ export const WysiwygEditor = component("WysiwygEditor", {
     const body = el.querySelector(".up-wysiwyg-body");
     const send = (ev, val) => ctx.send(ev, val);
 
-    // Set initial content
+    // Set initial content from component state
     if (body) {
-      const state = ctx.getState ? ctx.getState() : ctx.loop.get();
-      body.innerHTML = state.value || "";
+      const state = ctx.loop ? ctx.loop.get() : WysiwygEditor.loop.get();
+      const html = state && state.value ? state.value : "";
+      if (html) body.innerHTML = html;
     }
 
     // Toolbar click handler

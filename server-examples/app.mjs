@@ -190,7 +190,7 @@ function serveFile(res, filePath) {
   const contentType = MIME[ext] || "application/octet-stream";
   res.writeHead(200, {
     "Content-Type": contentType,
-    "Cache-Control": "no-cache",
+    "Cache-Control": "no-store",
   });
   res.end(readFileSync(filePath));
 }
