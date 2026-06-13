@@ -1,9 +1,11 @@
 /**
  * Chess Client — loaded as external script via <script src="/public/chess-client.js">
  *
- * Reads player config from a <script type="application/json" id="chess-config"> tag
- * and initial state from a <script type="application/json" id="chess-state"> tag.
- * No inline code in the HTML template — clean separation.
+ * Architecture:
+ *   - WebSocket connection state tracked via Uploop-style state object
+ *   - All ws.send() calls guarded by connection check
+ *   - Auto-reconnect on disconnect with backoff
+ *   - Graceful degradation when disconnected (board frozen, not crashed)
  */
 
 (function () {
@@ -13,106 +15,70 @@
   const { playerId, playerName } = config;
 
   const stateEl = document.getElementById("chess-state");
-  let initialState = { board: [], players: [], status: "waiting" };
+  var initialState = { board: [], players: [], status: "waiting" };
   if (stateEl) {
-    try { initialState = JSON.parse(stateEl.textContent); } catch (e) {}
+    try {
+      initialState = JSON.parse(stateEl.textContent);
+    } catch (e) {}
   }
 
-  console.log("[Chess] Loaded, player:", playerName, "initial:", initialState.status);
+  console.log("[Chess] Loaded, player:", playerName);
 
-  setTimeout(function () {
-    const ws = new WebSocket("ws://" + location.host + "/ws-chess");
-    console.log("[Chess] WebSocket connecting to /ws-chess");
-    let state = null;
+  // ── Connection state (Uploop-style: state + guarded sends) ──
+  var conn = {
+    ws: null,
+    open: false,
+    reconnectTimer: null,
+    reconnectDelay: 300,
+  };
 
-    // ---- Board rendering ----
-    function updateBoard(s) {
-      const container = document.getElementById("chess-board");
-      if (!container || !s.board) return;
-      const PIECES = {
-        king: "♚", queen: "♛", rook: "♜", bishop: "♝", knight: "♞", pawn: "♟",
-      };
-      const WHITE = {
-        king: "♔", queen: "♕", rook: "♖", bishop: "♗", knight: "♘", pawn: "♙",
-      };
-
-      let html = '<div style="display:inline-block;border:3px solid #333;border-radius:4px">';
-      s.board.forEach(function (row, ri) {
-        html += '<div style="display:flex">';
-        row.forEach(function (cell, ci) {
-          const isDark = (ri + ci) % 2 === 1;
-          const isSelected = s.selectedSquare && s.selectedSquare.row === ri && s.selectedSquare.col === ci;
-          const isLegal = s.legalMoves && s.legalMoves.some(function (m) { return m.row === ri && m.col === ci; });
-          let bg = isDark ? "#769656" : "#eeeed2";
-          if (isSelected) bg = "#baca44";
-          if (isLegal) bg = isDark ? "#646c40" : "#c8d878";
-          let symbol = "";
-          if (cell) symbol = cell.color === "white" ? WHITE[cell.type] : PIECES[cell.type];
-          html += '<div onclick="window._chessClick(' + ri + "," + ci + ')" style="width:52px;height:52px;background:' + bg + ';display:flex;align-items:center;justify-content:center;font-size:34px;cursor:pointer;user-select:none;transition:background 0.1s">' + symbol + "</div>";
-        });
-        html += "</div>";
-      });
-      html += "</div>";
-      container.innerHTML = html;
+  function safeSend(data) {
+    if (conn.ws && conn.open && conn.ws.readyState === WebSocket.OPEN) {
+      conn.ws.send(JSON.stringify(data));
+      return true;
     }
+    console.warn("[Chess] Cannot send — not connected");
+    return false;
+  }
 
-    window._chessClick = function (row, col) {
-      ws.send(JSON.stringify({ type: "select", row: row, col: col, playerId: playerId }));
+  function connect() {
+    if (conn.ws) {
+      try {
+        conn.ws.close();
+      } catch (e) {}
+    }
+    var ws = new WebSocket("ws://" + location.host + "/ws-chess");
+    conn.ws = ws;
+    conn.open = false;
+
+    ws.onopen = function () {
+      conn.open = true;
+      conn.reconnectDelay = 300; // reset backoff
+      console.log("[Chess] Connected");
+      safeSend({ type: "join", id: playerId, name: playerName });
     };
 
-    // ---- Status rendering ----
-    function updateStatus(s) {
-      const el = document.getElementById("chess-status");
-      if (!el) return;
-      const resetBtn = ' <button onclick="window._chessReset()" style="padding:0.3rem 0.6rem;background:#f44336;color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem">🔄 Reset</button>';
-      if (s.status === "waiting") {
-        el.innerHTML = '<button id="chess-start-pve" onclick="window._chessStartPvE()" style="padding:0.4rem 1rem;background:#646cff;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.9rem">🤖 Play vs Computer</button>' + resetBtn;
-      } else if (s.status === "playing") {
-        const thinking = s.aiThinking ? " 🤔..." : "";
-        el.innerHTML = 'Turn: <span style="color:#646cff">' + s.currentTurn + "</span>" + thinking + resetBtn;
-      } else if (s.status === "finished") {
-        el.innerHTML = '🏆 <span style="color:#646cff">' + s.winner + "</span> wins!" + resetBtn;
-      }
-    }
-
-    window._chessStartPvE = function () {
-      ws.send(JSON.stringify({ type: "setMode", mode: "pve" }));
-      ws.send(JSON.stringify({ type: "join", id: playerId, name: playerName }));
+    ws.onclose = function () {
+      conn.open = false;
+      console.log(
+        "[Chess] Disconnected, reconnecting in",
+        conn.reconnectDelay,
+        "ms",
+      );
+      conn.reconnectTimer = setTimeout(function () {
+        conn.reconnectDelay = Math.min(conn.reconnectDelay * 2, 10000);
+        connect();
+      }, conn.reconnectDelay);
     };
 
-    window._chessReset = function () {
-      ws.send(JSON.stringify({ type: "reset" }));
-      setTimeout(function () {
-        ws.send(JSON.stringify({ type: "join", id: playerId, name: playerName }));
-      }, 200);
+    ws.onerror = function () {
+      conn.open = false;
     };
 
-    // ---- Chat rendering ----
-    function updateChat(s) {
-      const el = document.getElementById("chess-chat");
-      if (!el || !s.messages) return;
-      el.innerHTML = s.messages
-        .map(function (m) {
-          return '<div style="margin-bottom:0.25rem"><strong>' + m.user + ":</strong> " + m.text + "</div>";
-        })
-        .join("");
-      el.scrollTop = el.scrollHeight;
-    }
-
-    // ---- Eager render ----
-    if (initialState && initialState.board) {
-      state = initialState;
-      updateBoard(initialState);
-      updateStatus(initialState);
-      updateChat(initialState);
-    }
-
-    // ---- WebSocket bridge ----
     ws.onmessage = function (e) {
-      const msg = JSON.parse(e.data);
+      var msg = JSON.parse(e.data);
       if (msg.type === "state") {
         state = msg;
-        console.log("[Chess] State:", state.status, "turn:", state.currentTurn, "ai:", state.aiThinking);
         updateBoard(state);
         updateStatus(state);
         updateChat(state);
@@ -125,26 +91,168 @@
         }
       }
     };
+  }
 
-    ws.onopen = function () {
-      ws.send(JSON.stringify({ type: "join", id: playerId, name: playerName }));
+  // ── State ─────────────────────────────────────────────────
+
+  var state = null;
+
+  // ── Board rendering ──────────────────────────────────────
+
+  function updateBoard(s) {
+    var container = document.getElementById("chess-board");
+    if (!container || !s.board) return;
+    var PIECES = {
+      king: "♚",
+      queen: "♛",
+      rook: "♜",
+      bishop: "♝",
+      knight: "♞",
+      pawn: "♟",
+    };
+    var WHITE = {
+      king: "♔",
+      queen: "♕",
+      rook: "♖",
+      bishop: "♗",
+      knight: "♘",
+      pawn: "♙",
     };
 
-    // ---- Chat input ----
-    window._chessChat = function () {
-      const input = document.getElementById("chess-chat-input");
-      if (!input || !input.value.trim()) return;
-      ws.send(JSON.stringify({ type: "chat", user: playerName, text: input.value }));
-      input.value = "";
-    };
+    var html =
+      '<div style="display:inline-block;border:3px solid #333;border-radius:4px">';
+    s.board.forEach(function (row, ri) {
+      html += '<div style="display:flex">';
+      row.forEach(function (cell, ci) {
+        var isDark = (ri + ci) % 2 === 1;
+        var isSelected =
+          s.selectedSquare &&
+          s.selectedSquare.row === ri &&
+          s.selectedSquare.col === ci;
+        var isLegal =
+          s.legalMoves &&
+          s.legalMoves.some(function (m) {
+            return m.row === ri && m.col === ci;
+          });
+        var bg = isDark ? "#769656" : "#eeeed2";
+        if (isSelected) bg = "#baca44";
+        if (isLegal) bg = isDark ? "#646c40" : "#c8d878";
+        var symbol = "";
+        if (cell)
+          symbol =
+            cell.color === "white" ? WHITE[cell.type] : PIECES[cell.type];
+        html +=
+          '<div onclick="window._chessClick(' +
+          ri +
+          "," +
+          ci +
+          ')" style="width:52px;height:52px;background:' +
+          bg +
+          ';display:flex;align-items:center;justify-content:center;font-size:34px;cursor:pointer;user-select:none;transition:background 0.1s">' +
+          symbol +
+          "</div>";
+      });
+      html += "</div>";
+    });
+    html += "</div>";
+    container.innerHTML = html;
+  }
 
-    const sendBtn = document.getElementById("chess-chat-send");
-    const chatInput = document.getElementById("chess-chat-input");
+  // ── Status rendering ─────────────────────────────────────
+
+  function updateStatus(s) {
+    var el = document.getElementById("chess-status");
+    if (!el) return;
+    var resetBtn =
+      ' <button onclick="window._chessReset()" style="padding:0.3rem 0.6rem;background:#f44336;color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem">🔄 Reset</button>';
+    if (s.status === "waiting") {
+      el.innerHTML =
+        '<button id="chess-start-pve" onclick="window._chessStartPvE()" style="padding:0.4rem 1rem;background:#646cff;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.9rem">🤖 Play vs Computer</button>' +
+        resetBtn;
+    } else if (s.status === "playing") {
+      var thinking = s.aiThinking ? " 🤔..." : "";
+      el.innerHTML =
+        'Turn: <span style="color:#646cff">' +
+        s.currentTurn +
+        "</span>" +
+        thinking +
+        (conn.open
+          ? resetBtn
+          : ' <span style="color:#f44336;font-size:0.7rem">⚠ Reconnecting...</span>');
+    } else if (s.status === "finished") {
+      el.innerHTML =
+        '🏆 <span style="color:#646cff">' +
+        s.winner +
+        "</span> wins!" +
+        resetBtn;
+    }
+  }
+
+  // ── Chat rendering ───────────────────────────────────────
+
+  function updateChat(s) {
+    var el = document.getElementById("chess-chat");
+    if (!el || !s.messages) return;
+    el.innerHTML = s.messages
+      .map(function (m) {
+        return (
+          '<div style="margin-bottom:0.25rem"><strong>' +
+          m.user +
+          ":</strong> " +
+          m.text +
+          "</div>"
+        );
+      })
+      .join("");
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // ── Public API — all guarded ─────────────────────────────
+
+  window._chessClick = function (row, col) {
+    safeSend({ type: "select", row: row, col: col, playerId: playerId });
+  };
+
+  window._chessStartPvE = function () {
+    safeSend({ type: "setMode", mode: "pve" });
+    safeSend({ type: "join", id: playerId, name: playerName });
+  };
+
+  window._chessReset = function () {
+    safeSend({ type: "reset" });
+    setTimeout(function () {
+      safeSend({ type: "join", id: playerId, name: playerName });
+    }, 200);
+  };
+
+  window._chessChat = function () {
+    var input = document.getElementById("chess-chat-input");
+    if (!input || !input.value.trim()) return;
+    safeSend({ type: "chat", user: playerName, text: input.value });
+    input.value = "";
+  };
+
+  // ── Chat input wiring ───────────────────────────────────
+
+  setTimeout(function () {
+    var sendBtn = document.getElementById("chess-chat-send");
+    var chatInput = document.getElementById("chess-chat-input");
     if (sendBtn) sendBtn.onclick = window._chessChat;
     if (chatInput) {
       chatInput.onkeydown = function (e) {
         if (e.key === "Enter") window._chessChat();
       };
     }
-  }, 100);
+  }, 200);
+
+  // ── Eager render + connect ───────────────────────────────
+
+  if (initialState && initialState.board) {
+    state = initialState;
+    updateBoard(initialState);
+    updateStatus(initialState);
+    updateChat(initialState);
+  }
+
+  setTimeout(connect, 100);
 })();
