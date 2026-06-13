@@ -7,6 +7,49 @@ import { test, expect } from "@playwright/test";
 const BASE = "http://localhost:3500";
 
 test.describe("Slither — Page Load & Rendering", () => {
+  test("page loads without JS errors or syntax errors", async ({ page }) => {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (msg) => {
+      if (msg.type() === "error") errors.push(msg.text());
+    });
+
+    await page.goto(`${BASE}/slither`);
+    await page.waitForTimeout(2000);
+
+    // Any pageerror means a script crashed — fail immediately with details
+    const realErrors = errors.filter(
+      (e) =>
+        !e.includes("favicon") &&
+        !e.includes("ERR_CONNECTION") &&
+        !e.includes("WebSocket") &&
+        !e.includes("ws://"),
+    );
+    if (realErrors.length > 0) {
+      console.error("SLITHER ERRORS:", realErrors);
+    }
+    expect(realErrors).toEqual([]);
+
+    // Canvas must exist (proves the module loaded without syntax errors)
+    await expect(page.locator("#slither-canvas")).toBeVisible();
+  });
+
+  test("client script initializes and logs ready", async ({ page }) => {
+    const logs = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "log" && msg.text().includes("[Slither]")) {
+        logs.push(msg.text());
+      }
+    });
+
+    await page.goto(`${BASE}/slither`);
+    await page.waitForTimeout(2000);
+
+    // Should log initialization message (proves script ran without errors)
+    const readyLog = logs.find((l) => l.includes("Ready"));
+    expect(readyLog).toBeTruthy();
+  });
+
   test("page loads with canvas visible", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -94,7 +137,9 @@ test.describe("Slither — WebSocket Connectivity", () => {
     // WS should have connected to /ws-slither
     const connected = await page.evaluate(() => {
       return window.wsLogs
-        ? window.wsLogs.some((l) => l.startsWith("open:") && l.includes("ws-slither"))
+        ? window.wsLogs.some(
+            (l) => l.startsWith("open:") && l.includes("ws-slither"),
+          )
         : true; // fallback if initScript didn't run
     });
     expect(connected).toBe(true);
@@ -189,7 +234,9 @@ test.describe("Slither — Multiple Players", () => {
     await expect(page.locator("#slither-canvas")).toBeVisible();
   });
 
-  test("canvas renders continuously without errors over time", async ({ page }) => {
+  test("canvas renders continuously without errors over time", async ({
+    page,
+  }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (msg) => {

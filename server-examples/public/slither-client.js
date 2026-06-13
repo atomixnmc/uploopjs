@@ -164,9 +164,6 @@ canvas.addEventListener("dblclick", toggleFullscreen);
 
 // ── Canvas drawing (60fps with interpolation) ──────────────
 
-const canvas = document.getElementById("slither-canvas");
-const ctx = canvas.getContext("2d");
-
 // Color helpers
 function hexToRgb(hex) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
