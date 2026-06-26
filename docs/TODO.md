@@ -125,6 +125,27 @@
 - [ ] CDN bundle
 - [ ] Test suite for all html features
 
+## Phase 11 — `@uploop/schema` Phase 1 🟢
+
+> Data shape layer for HyperGraph. JavaScript-functional. AI-readable.
+
+- [x] Design doc: `design-schema.md`, `IDEA_uploop-schema-v0.6.x.md`
+- [x] Progress doc: `progress-v0.6.x.md`
+- [x] Package scaffolded: `packages/schema/package.json`
+- [x] `src/core.js` — `schema()`, `ok()`, `fail()`, `failAt()`, `mergeResults()`, `ValidationError`, `wrapSchema()`, `cloneSchema()`
+- [x] `src/primitives.js` — `string()`, `number()`, `boolean()`, `date()`, `literal()`, `enumeration()` with chainable constraints
+- [x] `src/structural.js` — `object()`, `array()`, `tuple()`, `record()` with chainable modifiers
+- [x] `src/modifiers.js` — `optional()`, `nullable()`, `withDefault()`, `transform()`, `pipe()`
+- [x] `src/compose.js` — `extend()`, `merge()`, `pick()`, `omit()`, `partial()`, `lazy()`
+- [x] `src/index.js` — public API with 20+ exports
+- [x] `test/primitives.test.js` — **64 tests, all passing**
+- [x] Full suite: 128 tests (64 schema + 64 core) — zero regressions
+
+### Next: Phase 2 — Entities & Relations
+- [ ] `src/relational.js` — `entity()`, `ref()`, `computed()`
+- [ ] `src/hypergraph.js` — `toGraph()`, `fromSchema()`
+- [ ] Tests: relational.test.js, hypergraph.test.js
+
 ## Phase 9 — E2E Tests (Playwright) ✅
 
 - [x] `tab-navigation.spec.js` — demo gallery tabs + URL routing
