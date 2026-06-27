@@ -20,3 +20,17 @@ export {
 } from './strategies.js'
 export { generateReport, generateAllFlowsComparison } from './report.js'
 export { pipeline, queue, eventStream } from './pipeline.js'
+export {
+  createCircuitBreaker, CircuitOpenError,
+  createRateLimiter,
+  createRetryWithBackoff, MaxRetriesExceededError,
+  createBatchProcessor,
+  createPriorityQueue,
+  createDeduplicationFilter,
+  createEventBus,
+  createIdempotencyGuard,
+  createDeadLetterQueue,
+  createBulkhead, BulkheadFullError,
+  createSagaOrchestrator, SagaFailedError,
+  createFanOutFanIn, FanOutTimeoutError
+} from './profiles/index.js'
