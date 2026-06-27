@@ -1,8 +1,8 @@
 # v0.7.x — @uploop/flows 🟢
 
-> **Status:** In Progress (Phase 1-4 complete, Phase 5 remaining)  
-> **Date:** 2026-06-26  
-> **Tests:** 17 (flows) + 237 (schema+stream+core) = 254 total — zero regressions
+> **Status:** In Progress (Phases 1-4 complete, 50 enterprise flows added, Phase 5 remaining)  
+> **Date:** 2026-06-27  
+> **Tests:** 20 (flows) + 234 (schema+stream+core) = 254 total — zero regressions
 
 ## Overview
 
@@ -65,11 +65,23 @@
 
 ## Phase 5 — Remaining
 
+- [x] 50 enterprise/high-performance flows added to registry (74 total: 24 original + 50 new)
+- [x] Package README.md with API docs, flow reference, usage examples
 - [ ] Deep executor integration — route actual graph updates through selected executor
 - [ ] Per-subgraph flow routing in `createMixedFlow()`
 - [ ] Real benchmarks (not estimates): search typeahead, data grid, chat at scale
 - [ ] More flow profiles for edge cases (file upload, payment flow, auth flow)
 - [ ] Integration with server-examples
+
+### New Flow Categories (v0.7.x expansion)
+
+| Category | Count | Highlights |
+|----------|-------|-----------|
+| Enterprise Messaging | 10 | eventBus, sagaOrchestrator, cqrsPipeline, CDC, outboxPattern |
+| Resilience & Reliability | 10 | circuitBreaker, rateLimiter, retryWithBackoff, bulkhead, featureFlag |
+| Data Processing | 10 | mapReduce, windowedAggregation, enrichmentPipeline, joinOperator, fanOutFanIn |
+| High-Performance Infra | 10 | connectionPool, priorityQueue, workStealing, shardedCache, gossipProtocol |
+| Streaming & Media | 10 | websocketMultiplexer, adaptiveBitrate, jitterBuffer, FEC, mediaTranscoder |
 
 ## Comparison Stats (vs React/Solid)
 

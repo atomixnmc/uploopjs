@@ -3,8 +3,8 @@ import { createGraph } from '../../core/src/index.js'
 import { flows, listFlows, suggestFlow, createFlow } from '../src/index.js'
 
 describe('flows registry', () => {
-  it('has 24 flow profiles', () => {
-    expect(Object.keys(flows).length).toBe(24)
+  it('has 74 flow profiles (24 original + 50 enterprise)', () => {
+    expect(Object.keys(flows).length).toBe(74)
   })
   it('each flow has required fields', () => {
     for (const [name, flow] of Object.entries(flows)) {
@@ -17,6 +17,36 @@ describe('flows registry', () => {
   })
   it('listFlows() filters by category', () => {
     expect(listFlows({ category: 'ui' }).length).toBe(6)
+    expect(listFlows({ category: 'enterprise' }).length).toBe(10)
+    expect(listFlows({ category: 'resilience' }).length).toBe(10)
+    expect(listFlows({ category: 'streaming' }).length).toBe(10)
+  })
+  it('all 10 categories present', () => {
+    const cats = new Set(Object.values(flows).map(f => f.category))
+    expect(cats).toContain('ui')
+    expect(cats).toContain('real-time')
+    expect(cats).toContain('data')
+    expect(cats).toContain('media')
+    expect(cats).toContain('infra')
+    expect(cats).toContain('games')
+    expect(cats).toContain('ai')
+    expect(cats).toContain('enterprise')
+    expect(cats).toContain('resilience')
+    expect(cats).toContain('streaming')
+  })
+  it('enterprise flows use etl-guru and ring-buffer executors', () => {
+    const enterprise = listFlows({ category: 'enterprise' })
+    for (const f of enterprise) {
+      expect(f.executors.some(e => ['etl-guru', 'ring-buffer', 'reactive-tower'].includes(e))).toBe(true)
+    }
+  })
+  it('resilience flows define circuit breaker / retry / rate limit patterns', () => {
+    const resilience = listFlows({ category: 'resilience' })
+    const names = resilience.map(f => f.name)
+    expect(names).toContain('circuitBreaker')
+    expect(names).toContain('rateLimiter')
+    expect(names).toContain('retryWithBackoff')
+    expect(names).toContain('bulkhead')
   })
 })
 
