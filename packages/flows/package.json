@@ -1,7 +1,7 @@
 {
   "name": "@uploop/flows",
-  "version": "0.1.0",
-  "description": "Uploop flows — pre-tuned execution profiles for 24 use cases",
+  "version": "0.2.0",
+  "description": "Uploop flows — 74 pre-tuned execution profiles with 12 production-quality algorithm implementations",
   "type": "module",
   "main": "./src/index.js",
   "exports": { ".": { "import": "./src/index.js" } },
