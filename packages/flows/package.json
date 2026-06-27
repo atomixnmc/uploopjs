@@ -1,0 +1,9 @@
+{
+  "name": "@uploop/flows",
+  "version": "0.1.0",
+  "description": "Uploop flows — pre-tuned execution profiles for 24 use cases",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": { ".": { "import": "./src/index.js" } },
+  "dependencies": { "@uploop/core": "workspace:*" }
+}

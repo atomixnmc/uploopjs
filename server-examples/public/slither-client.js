@@ -70,6 +70,14 @@ const loop = createLoop({
           .filter((p) => p.life > 0),
       };
     },
+
+    setMouse(s, { x, y }) {
+      return { mouseX: x, mouseY: y };
+    },
+
+    setLastDir(s, dir) {
+      return { lastDir: dir };
+    },
   },
 });
 
