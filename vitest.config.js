@@ -3,10 +3,6 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "jsdom",
-    include: [
-      "packages/**/*.test.js",
-      "examples/**/*.test.js",
-      "server-examples/**/*.test.js",
-    ],
+    include: ["packages/**/*.test.js", "server-examples/**/*.test.js"],
   },
 });
