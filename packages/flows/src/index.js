@@ -34,3 +34,9 @@ export {
   createSagaOrchestrator, SagaFailedError,
   createFanOutFanIn, FanOutTimeoutError
 } from './profiles/index.js'
+export {
+  schedule, createBatchScheduler, createFrameBudget,
+  createAbortContext, createLaneRouter, createExecutionMonitor,
+  LANES
+} from './executor.js'
+export { createWorkerPool } from './workerPool.js'

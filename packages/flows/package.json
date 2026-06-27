@@ -1,7 +1,7 @@
 {
   "name": "@uploop/flows",
-  "version": "0.2.0",
-  "description": "Uploop flows — 74 pre-tuned execution profiles with 12 production-quality algorithm implementations",
+  "version": "0.3.0",
+    "description": "Uploop flows — 74 profiles, 12 algorithms, advanced execution engine (workers, scheduling, lanes)",
   "type": "module",
   "main": "./src/index.js",
   "exports": { ".": { "import": "./src/index.js" } },
