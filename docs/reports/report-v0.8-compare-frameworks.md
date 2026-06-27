@@ -1,6 +1,6 @@
 # v0.8 Cross-Framework Comparison Report
 
-> **Date:** 2026-06-26  
+> **Date:** 2026-06-27  
 > **Scope:** Uploop full stack vs React/Relay/GraphQL, Next.js/Nuxt/SvelteKit, FeathersJS, Bun, Express/Fastify/Hono, Cloudflare/Firebase  
 > **Includes:** Long runtime (Uploop's polyglot JS/TS engine, beta, integrates v1.0)  
 > **Goal:** Identify where Uploop wins, loses, and max out design potential at v0.8
@@ -15,7 +15,7 @@
 | **UI** | `@uploop/html` | DOM adapter, template tag, WebComponent, suspend | 37 KB |
 | **Data** | `@uploop/schema` | Entity definitions, validation, AI-readable describe(), intent, wire | ~15 KB |
 | **State** | `@uploop/store` | External store, selectors, derived, persist, storeFromEntity | 6 KB |
-| **Flow** | `@uploop/flows` | 24 pre-tuned profiles, 10 strategies, pipelines, queues, event streams | ~10 KB |
+| **Flow** | `@uploop/flows` | 74 profiles, 12 algorithms, 5-lane executor, actor/reactive patterns, pipelines, queues, event streams | ~20 KB |
 | **Wire** | `@uploop/stream` | Binary codec, zero-copy, self-framing, reader/writer | ~8 KB |
 | **Routing** | `@uploop/router` | Route matching, guards, layouts, lazy loading | 9 KB |
 | **Styling** | `@uploop/css` | Utility CSS, theme tokens, variants, animations | 53 KB |
@@ -119,18 +119,27 @@ These are the "batteries-included" frameworks that combine routing, SSR, data fe
 ### What v0.8 Already Delivers
 
 1. **One entity → everything**: Entity auto-generates validation, CRUD, wire format, form UI, AI manifest, TypeScript, JSON Schema, GraphQL SDL
-2. **24 pre-tuned execution profiles**: No other framework ships use-case-specific executor strategies
-3. **10 breakthrough strategies**: Temperature routing, dependency batching, critical path, orphan detection, backpressure control
-4. **Composable pipelines + queues + event streams**: Lightweight alternative to RxJS, built on HyperGraph
-5. **Binary streaming codec**: Entity = wire format, zero-copy reads, 60% smaller than JSON
-6. **AI intent schema**: LLMs communicate data shapes in ~15 tokens vs ~200
+2. **74 pre-tuned execution profiles**: No other framework ships use-case-specific executor strategies across 10 categories
+3. **12 production-quality algorithm implementations**: Circuit breaker, rate limiter, retry with backoff, priority queue (with aging), dedup filter (Bloom+LRU), event bus, idempotency guard, dead letter queue, bulkhead, saga orchestrator, fan-out/fan-in, batch processor — all with `describe()` for AI-readability
+4. **5-lane execution engine**: Critical (microtask), hot (RAF), warm (postTask), cold (idleCallback), idle (setTimeout) — lane routing from HyperGraph temperature metadata. Batch scheduler, frame budget enforcer, abort context propagation, execution monitor
+5. **Worker pool**: CPU-bound task offloading with load balancing, transferable support, dead worker detection, task timeout
+6. **Actor & Reactive patterns**: `createActor()` with sequential mailbox + `createActorSystem()` supervision trees. `createSignal()`, `createComputed()`, `createEffect()`, `batch()`, `createReactiveStore()`, `createResource()` — Solid.js/RxJS style primitives on HyperGraph
+7. **Composable pipelines + queues + event streams**: Lightweight alternative to RxJS, built on HyperGraph
+8. **Binary streaming codec**: Entity = wire format, zero-copy reads, 60% smaller than JSON
+9. **AI intent schema**: LLMs communicate data shapes in ~15 tokens vs ~200
+10. **10 breakthrough strategies**: Temperature routing, dependency batching, critical path, orphan detection, backpressure control
 
 ### v0.8 Max-Out Checklist
 
 - [x] Schema engine with entity, validation, relations, AI manifest
 - [x] Intent schema for AI communication
 - [x] Client/server wire protocol with version negotiation
-- [x] 24 flow profiles with tuning, lanes, detection heuristics
+- [x] 74 flow profiles (24 original + 50 enterprise) with tuning, lanes, detection heuristics
+- [x] 12 production-quality algorithm implementations
+- [x] 5-lane execution engine (critical/hot/warm/cold/idle)
+- [x] Worker pool for CPU-bound task offloading
+- [x] Actor model (createActor + createActorSystem with supervision)
+- [x] Reactive pattern (signals, computed, effects, batch, store, resource)
 - [x] 10 breakthrough strategies
 - [x] Composable pipelines, queues, event streams
 - [x] Binary codec with zero-copy, self-framing
@@ -148,30 +157,31 @@ These are the "batteries-included" frameworks that combine routing, SSR, data fe
 ## 5. Unified Positioning — The Complete Uploop Ecosystem
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    UPLOOP ECOSYSTEM                       │
-│                                                           │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────┐  │
-│  │ schema  │  │  flows  │  │ stream  │  │   store    │  │
-│  │ entity  │  │profiles │  │ binary  │  │ serverStore│  │
-│  │ intent  │  │pipeline │  │ codec   │  │   compose  │  │
-│  │  wire   │  │  queue  │  │ reader  │  │   persist  │  │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └─────┬─────┘  │
-│       │            │            │              │         │
-│       └────────────┼────────────┼──────────────┘         │
-│                    │            │                         │
-│              ┌─────┴────────────┴─────┐                   │
-│              │      HYPERGRAPH        │                   │
-│              │   (core engine)        │                   │
-│              └─────┬────────────┬─────┘                   │
-│                    │            │                         │
-│         ┌──────────┴──┐  ┌─────┴──────────┐              │
-│         │  Uploop JS  │  │  Long (v1.0)   │              │
-│         │  (Node/V8)  │  │  (Native/Rust) │              │
-│         └─────────────┘  └────────────────┘              │
-│                                                           │
-│  Deploy anywhere: Node, Bun, Deno, Cloudflare, bare metal │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      UPLOOP ECOSYSTEM                         │
+│                                                               │
+│  ┌─────────┐  ┌──────────┐  ┌─────────┐  ┌──────────────┐  │
+│  │ schema  │  │  flows   │  │ stream  │  │    store      │  │
+│  │ entity  │  │74 profiles│  │ binary  │  │  serverStore  │  │
+│  │ intent  │  │12 algos  │  │ codec   │  │   compose     │  │
+│  │  wire   │  │5 lanes   │  │ reader  │  │   persist     │  │
+│  │  bind   │  │actor+rx  │  │ writer  │  │               │  │
+│  └────┬────┘  └────┬─────┘  └────┬────┘  └──────┬───────┘  │
+│       │            │             │              │           │
+│       └────────────┼─────────────┼──────────────┘           │
+│                    │             │                           │
+│              ┌─────┴─────────────┴─────┐                     │
+│              │       HYPERGRAPH         │                     │
+│              │    (core engine)         │                     │
+│              └─────┬─────────────┬──────┘                     │
+│                    │             │                            │
+│         ┌──────────┴──┐  ┌──────┴─────────┐                 │
+│         │  Uploop JS  │  │  Long (v1.0)   │                 │
+│         │  (Node/V8)  │  │  (Native/Rust) │                 │
+│         └─────────────┘  └────────────────┘                 │
+│                                                               │
+│  Deploy anywhere: Node, Bun, Deno, Cloudflare, bare metal    │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### The "One Definition" Promise
@@ -247,4 +257,4 @@ Full rewrite → Evaluate if advantages (AI-readable, binary wire, executor dive
 
 ---
 
-*Report from real code. 254 tests passing. Long runtime beta → v1.0.*
+*Report from real code. 404 tests passing across 17 test files. Long runtime beta → v1.0.*
