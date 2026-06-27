@@ -40,3 +40,9 @@ export {
   LANES
 } from './executor.js'
 export { createWorkerPool } from './workerPool.js'
+export { createActor, createActorSystem } from './actor.js'
+export {
+  createSignal, createComputed, createEffect,
+  batch, createReactiveStore, createResource,
+  reactiveFromGraph
+} from './reactive.js'
