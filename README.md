@@ -22,7 +22,27 @@
 
 **Uploop** is a graph-native, AI-readable application framework where data shapes, UI components, execution strategies, and wire formats are declared as a single **HyperGraph** — inspectable, optimizable, and translatable by both humans and AI.
 
-Define an entity once. Get validation, CRUD, form UI, binary streaming, AI manifests, TypeScript types, GraphQL SDL, and database schemas — automatically.
+```js
+import { html, component } from '@uploop/html'
+
+const Counter = component('Counter', {
+  state: { count: 0 },
+  update: {
+    inc: (s) => ({ count: s.count + 1 }),
+    dec: (s) => ({ count: s.count - 1 })
+  },
+  view: (state, { send }) => html`
+    <div>
+      <h2>Count: ${state.count}</h2>
+      <button @click=${() => send('inc')}>+</button>
+      <button @click=${() => send('dec')}>-</button>
+    </div>
+  `
+})
+Counter.mount(document.getElementById('root'))
+```
+
+Components are just one part of the HyperGraph. Define an entity once and get validation, CRUD, form UI, binary streaming, AI manifests, TypeScript types, GraphQL SDL, and database schemas — automatically.
 
 ```js
 import { entity, string, number, ref, toGraph, createStreamCodec, entityComponent } from '@uploop/schema'
@@ -72,6 +92,32 @@ toGraphQL(User)          // GraphQL SDL
 - **Server-side rendering** — `renderToString()` + `hydrate()` in `@uploop/sst`
 - **Remote loops** — `createRemoteLoop()` bridges client-server state over WebSocket
 - **Service layer** — FeathersJS-style CRUD + real-time events on graph data nodes
+
+## Async Metadata — Zero Boilerplate
+
+Declare async behavior as metadata on your handlers. The framework handles debouncing, aborting, caching, and error recovery:
+
+```js
+import { createLoop } from '@uploop/core'
+
+const search = createLoop({
+  state: { query: '', results: [] },
+  cache:  { results: { ttl: 10000, swr: true } },
+  error:  { search: { retry: 3, fallback: { results: [] } } },
+  update: {
+    search: {
+      debounce: 300,           // ← auto-debounced
+      interruptible: true,     // ← auto AbortController
+      run: async (s, query, { signal }) => {
+        const res = await fetch(`/api?q=${query}`, { signal })
+        return { results: await res.json() }
+      }
+    }
+  }
+})
+```
+
+No manual `setTimeout`, `clearTimeout`, `AbortController`, loading flags, or error state — the framework handles it all.
 
 ## Packages
 
