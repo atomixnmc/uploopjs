@@ -3,8 +3,9 @@
   "version": "0.0.1",
   "type": "module",
   "main": "./src/index.js",
+  "exports": { ".": { "import": "./src/index.js" } },
   "dependencies": {
     "@uploop/core": "workspace:*",
-        "@uploop/html": "workspace:*"
+    "@uploop/html": "workspace:*"
   }
 }
