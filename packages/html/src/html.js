@@ -119,6 +119,14 @@ function parseAttrs(attrStr) {
     while (i < len && isSpace(attrStr.charCodeAt(i))) i++
     if (i >= len) break
 
+    // Skip HTML comments <!-- ... -->
+    if (i + 3 < len && attrStr[i] === '<' && attrStr[i+1] === '!' && attrStr[i+2] === '-' && attrStr[i+3] === '-') {
+      i += 4
+      while (i + 2 < len && !(attrStr[i] === '-' && attrStr[i+1] === '-' && attrStr[i+2] === '>')) i++
+      i += 3 // skip -->
+      continue
+    }
+
     // Read key (word chars)
     const keyStart = i
     while (i < len && isWord(attrStr.charCodeAt(i))) i++
@@ -173,6 +181,17 @@ function resolvePascalTags(str) {
     result += str.slice(i, lt)
     i = lt + 1
     if (i >= len) { result += '<'; break }
+
+    // Skip HTML comments <!-- ... -->
+    if (i + 2 < len && str[i] === '!' && str[i+1] === '-' && str[i+2] === '-') {
+      const commentEnd = str.indexOf('-->', i + 3)
+      if (commentEnd !== -1) {
+        i = commentEnd + 3
+        continue
+      }
+      result += '<'
+      continue
+    }
 
     // Check for PascalCase: first char must be A-Z
     if (!isUpper(str.charCodeAt(i))) {
