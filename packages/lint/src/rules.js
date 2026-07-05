@@ -191,11 +191,11 @@ export function checkComponentRules(source, errors, warnings) {
     }
   }
 
-  // 23. Using .prop=${} syntax inside html` (must use @prop or :prop)
+  // 23. Using @event and :attr are preferred. .prop=${} is supported but verbose.
   if (source.includes('.prop=') && source.includes('html`')) {
     warnings.push({
-      code: 'dot_prop_syntax',
-      message: '.prop=${} syntax found. Uploop uses @event for event bindings and :attr for attribute bindings. For property access, use @prop=${(e) => ...}.',
+      code: 'dot_prop_prefer_at',
+      message: '.prop=${} syntax found. Consider using @event for event handlers or :attr for attribute bindings instead. .prop is supported but less idiomatic.',
       line: findLine(source, '.prop=')
     })
   }

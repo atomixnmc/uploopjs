@@ -183,14 +183,24 @@ function checkCommonMistakes(source, errors, warnings, filePath) {
     })
   }
 
-  // 10. JSX-like <${Component} /> (Issue 1 from aiDataExpert)
+  // 10. JSX-like <${Component} /> — now supported via dynamic components in html`.
+  // Only warn if / is used without proper component reference.
   var dollarBrace = String.fromCharCode(36) + String.fromCharCode(123) // ${
   if (source.indexOf(dollarBrace) > -1 && source.indexOf('/>') > source.indexOf(dollarBrace)) {
-    warnings.push({
-      code: 'jsx_component_pattern',
-      message: 'JSX-like <${Component} /> pattern detected. Uploop does NOT compose components via template interpolation. Use .mount(el) instead.',
-      line: findLine(source, dollarBrace),
-    })
+    // Check if the pattern uses a valid component reference
+    var dpMatch = source.match(/<\$\{(\w+)\}\s*\/>/g)
+    if (dpMatch) {
+      for (var di = 0; di < dpMatch.length; di++) {
+        var compName = (dpMatch[di].match(/\$\{(\w+)\}/) || [])[1]
+        if (compName && !_componentRegistry[compName]) {
+          warnings.push({
+            code: 'dynamic_component_not_registered',
+            message: '<' + dollarBrace + compName + '} /> references "' + compName + '" which is not a registered Uploop component. Use: import { component } from \'@uploop/html\' and call component(\'' + compName + '\', {...}) first.',
+            line: findLine(source, dpMatch[di]),
+          })
+        }
+      }
+    }
   }
 }
 

@@ -41,6 +41,7 @@ const $SLASH = 47   // '/'
 const $AT = 64      // '@'
 const $DOT = 46     // '.'
 const $QM = 63      // '?'
+const $CLN = 58     // ':'
 const $DQ = 34      // '"'
 const $SQ = 39      // "'"
 const $A = 65       // 'A'
@@ -96,6 +97,7 @@ function detectBindingSuffix(str) {
   if (prefixChar === $AT) { type = 'event'; marker = 'data-up-event="' }
   else if (prefixChar === $DOT) { type = 'prop';  marker = 'data-up-prop="' }
   else if (prefixChar === $QM)  { type = 'bool';  marker = 'data-up-bool="' }
+  else if (prefixChar === $CLN) { type = 'attr';  marker = 'data-up-attr="' }
   else return null
 
   const name = str.slice(end + 1, nameEnd + 1)
@@ -329,6 +331,28 @@ export function html(strings, ...values) {
 
       // 2. Resolve PascalCase tags in the static string part
       str = resolvePascalTags(str)
+
+      // 2b. Dynamic component: <${Comp} /> or <${Comp} attr=${val} />
+      // Pattern: static part before binding ends with '<', next static starts with '/>'
+      if (i + 1 < strings.length && typeof value === 'function' && value._isComponent) {
+        const nextStr = strings[i + 1]
+        const trimmed = nextStr.trimStart()
+        if (trimmed.startsWith('/>') || trimmed.startsWith('>')) {
+          const isSelfClosing = trimmed.startsWith('/>')
+          const attrStr = isSelfClosing ? nextStr.slice(0, nextStr.indexOf('/>')) : ''
+          const props = attrStr ? parseAttrs(attrStr) : {}
+          try {
+            const inst = value.create ? value.create(props) : value(props)
+            const rendered = typeof inst.render === 'function' ? inst.render() : String(inst ?? '')
+            fragments.push(str + rendered)
+            // Skip the next static part (/> and onwards)
+            i++
+            continue
+          } catch (e) {
+            // Fall through to normal binding if component rendering fails
+          }
+        }
+      }
 
       // 3. Handle the value — text interpolation or nested template merge
       if (value && typeof value === 'object' && 'template' in value && 'bindings' in value) {
