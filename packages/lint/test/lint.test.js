@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { checkString } from '../src/index.js'
 
-const L = String.fromCharCode(60) // <
-const G = String.fromCharCode(62) // >
+const L = String.fromCharCode(60)
+const G = String.fromCharCode(62)
 
 describe('checkString', () => {
   it('passes valid Uploop component code', () => {
