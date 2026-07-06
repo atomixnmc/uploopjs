@@ -1,0 +1,18 @@
+{
+  "name": "@uploop/css",
+  "version": "0.2.0"
+  "description": "Uploop CSS utility engine — design tokens, utility classes, themes",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js"
+    }
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "files": [
+    "src"
+  ]
+}
