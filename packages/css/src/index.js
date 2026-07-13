@@ -58,7 +58,9 @@ export {
 } from './dynamic.js'
 
 // Chainable style builder
-export { css, css2 } from './chain.js'
+// css()`...` tagged template returns parsed CSS
+// css().props() sets multiple props at once
+export { css, css2, parseCSS } from './chain.js'
 
 // Color utilities
 export {

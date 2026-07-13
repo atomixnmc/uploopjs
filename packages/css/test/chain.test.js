@@ -1,6 +1,6 @@
 // ─── Chain Tests ───────────────────────────────────────────────
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { css, css2 } from '../src/chain.js'
+import { css, css2, parseCSS } from '../src/chain.js'
 import { getSheet, removeSheet } from '../src/inject.js'
 
 describe('css() - ChainBuilder', () => {
@@ -184,5 +184,104 @@ describe('css2() - Proxy convenience', () => {
     const result = proxy.done()
     expect(result.css).toContain('background-color: red')
     expect(result.css).toContain('font-size: 1rem')
+  })
+})
+
+describe('css().props()', () => {
+  it('sets multiple properties from an object', () => {
+    const result = css().props({ color: 'red', fontSize: '1rem', padding: '0.5rem' }).done()
+    expect(result.css).toContain('color: red')
+    expect(result.css).toContain('font-size: 1rem')
+    expect(result.css).toContain('padding: 0.5rem')
+  })
+
+  it('converts camelCase to kebab-case', () => {
+    const result = css().props({ backgroundColor: 'blue', borderRadius: '8px' }).done()
+    expect(result.css).toContain('background-color: blue')
+    expect(result.css).toContain('border-radius: 8px')
+  })
+
+  it('is chainable with other methods', () => {
+    const result = css().props({ color: 'red' }).prop('font-size', '1rem').done()
+    expect(result.css).toContain('color: red')
+    expect(result.css).toContain('font-size: 1rem')
+  })
+
+  it('handles empty object gracefully', () => {
+    const result = css().props({}).done()
+    expect(result.css).toBe('')
+  })
+
+  it('ignores null/undefined', () => {
+    const result = css().props(null).done()
+    expect(result.css).toBe('')
+  })
+})
+
+describe('css tagged template', () => {
+  it('parses single rule into graph and json', () => {
+    const result = css`
+      .btn { color: red; font-size: 1rem }
+    `
+    expect(result.graph).toEqual({
+      '.btn': { color: 'red', 'font-size': '1rem' }
+    })
+    expect(result.json).toHaveLength(1)
+    expect(result.json[0]).toEqual({
+      selector: '.btn',
+      css: 'color: red; font-size: 1rem'
+    })
+  })
+
+  it('parses multiple rules', () => {
+    const result = css`
+      .btn { color: red }
+      .icon { width: 1em; height: 1em }
+    `
+    expect(Object.keys(result.graph)).toHaveLength(2)
+    expect(result.graph['.btn']).toEqual({ color: 'red' })
+    expect(result.graph['.icon']).toEqual({ width: '1em', height: '1em' })
+    expect(result.json).toHaveLength(2)
+  })
+
+  it('includes text property with original CSS', () => {
+    const result = css`.foo { color: blue }`
+    expect(result.text).toBe('.foo { color: blue }')
+  })
+
+  it('handles empty input', () => {
+    const result = css``
+    expect(result.graph).toEqual({})
+    expect(result.json).toEqual([])
+    expect(result.text).toBe('')
+  })
+
+  it('handles trailing semicolons correctly', () => {
+    const result = css`
+      .card { color: red; font-size: 1rem; }
+    `
+    expect(result.graph['.card']).toEqual({ color: 'red', 'font-size': '1rem' })
+  })
+
+  it('handles inline single-line format', () => {
+    const result = css`.btn { color: red; font-size: 1rem }`
+    expect(result.graph['.btn']).toEqual({ color: 'red', 'font-size': '1rem' })
+  })
+})
+
+describe('parseCSS()', () => {
+  it('parses CSS string', () => {
+    const result = parseCSS('.card { padding: 1rem; margin: 0 }')
+    expect(result.graph['.card']).toEqual({ padding: '1rem', margin: '0' })
+    expect(result.json).toHaveLength(1)
+    expect(result.json[0].selector).toBe('.card')
+    expect(result.text).toBe('.card { padding: 1rem; margin: 0 }')
+  })
+
+  it('handles empty string', () => {
+    const result = parseCSS('')
+    expect(result.graph).toEqual({})
+    expect(result.json).toEqual([])
+    expect(result.text).toBe('')
   })
 })

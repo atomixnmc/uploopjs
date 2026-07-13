@@ -12,17 +12,88 @@ import { camelToKebab } from './dynamic.js'
 
 let _uid = 0
 
+// ─── CSS Tagged Template Parser ──────────────────────────────
+// css`.btn { color: red }` → { graph, json, text }
+
 /**
- * Start a chainable style builder.
+ * Parse raw CSS text into structured representations.
  *
- * @param {CSSStyleSheet} [sheet] - Target sheet (default: global)
- * @returns {ChainBuilder}
+ * @param {string} cssText - Raw CSS string
+ * @returns {{
+ *   graph: Object<string, Object<string, string>>,
+ *   json: { selector: string, css: string }[],
+ *   text: string
+ * }}
  *
  * @example
- * const btn = css().bg('primary').text('white').px(4).py(2).rounded('md')
- * element.className = btn.className
+ * parseCSS('.btn { color: red; font-size: 1rem } .icon { width: 1em }')
+ * // → {
+ * //   graph: { '.btn': { color: 'red', 'font-size': '1rem' }, '.icon': { width: '1em' } },
+ * //   json: [{ selector: '.btn', css: 'color: red; font-size: 1rem' }, ...],
+ * //   text: '.btn { color: red; font-size: 1rem } .icon { width: 1em }'
+ * // }
+ */
+function parseCSS(cssText) {
+  const graph = {}
+  const json = []
+  const text = cssText.trim()
+
+  // Match each rule: selector { declarations }
+  const ruleRe = /([^{]+)\{([^}]*)\}/g
+  let match
+  while ((match = ruleRe.exec(text)) !== null) {
+    const selector = match[1].trim()
+    const decls = match[2].trim()
+    const entries = decls
+      .split(';')
+      .map(d => d.trim())
+      .filter(Boolean)
+      .map(d => {
+        const colon = d.indexOf(':')
+        if (colon === -1) return null
+        return [d.slice(0, colon).trim(), d.slice(colon + 1).trim()]
+      })
+      .filter(Boolean)
+
+    const ruleObj = {}
+    for (const [prop, val] of entries) {
+      ruleObj[prop] = val
+    }
+    graph[selector] = ruleObj
+    json.push({
+      selector,
+      css: entries.map(([p, v]) => `${p}: ${v}`).join('; ')
+    })
+  }
+
+  return { graph, json, text }
+}
+
+/**
+ * Start a chainable style builder, or parse CSS as a tagged template.
+ *
+ * - `css()` → ChainBuilder for fluent style construction
+ * - `css(sheet)` → ChainBuilder targeting a specific sheet
+ * - `` css`.btn { color: red }` `` → parsed CSS result { graph, json, text }
+ *
+ * @param {CSSStyleSheet|TemplateStringsArray|undefined} [sheet]
+ * @returns {ChainBuilder|{ graph: Object, json: Array, text: string }}
+ *
+ * @example
+ * // Chain builder
+ * const btn = css().bg('primary').text('white').px(4).done()
+ *
+ * // Tagged template
+ * const { graph, json } = css`
+ *   .btn { color: red; font-size: 1rem }
+ *   .icon { width: 1em; height: 1em }
+ * `
  */
 export function css(sheet) {
+  // Detect tagged template: css`...` passes array as first arg
+  if (Array.isArray(sheet)) {
+    return parseCSS(sheet.join(''))
+  }
   return new ChainBuilder(sheet)
 }
 
@@ -53,6 +124,24 @@ class ChainBuilder {
   prop(prop, value) {
     const key = camelToKebab(prop)
     this.#decls[key] = value
+    return this
+  }
+
+  /**
+   * Set multiple CSS properties at once from a plain object.
+   *
+   * @param {Object<string, string|number>} obj - Map of property → value
+   * @returns {ChainBuilder}
+   *
+   * @example
+   * css().props({ color: 'red', fontSize: '1rem', padding: '0.5rem 1rem' }).done()
+   */
+  props(obj) {
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      for (const [k, v] of Object.entries(obj)) {
+        this.prop(k, v)
+      }
+    }
     return this
   }
 
@@ -285,3 +374,15 @@ const chainProxyHandler = {
 export function css2(sheet) {
   return new Proxy(new ChainBuilder(sheet), chainProxyHandler)
 }
+
+/**
+ * Parse CSS text into structured representations.
+ * Useful standalone when you don't want to use the tagged template syntax.
+ *
+ * @param {string} cssText
+ * @returns {{ graph: Object, json: Array, text: string }}
+ *
+ * @example
+ * const { graph, json } = parseCSS('.btn { color: red }')
+ */
+export { parseCSS }
