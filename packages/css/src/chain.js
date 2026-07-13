@@ -36,7 +36,9 @@ let _uid = 0
 function parseCSS(cssText) {
   const graph = {}
   const json = []
-  const text = cssText.trim()
+  // Strip CSS comments /* ... */ before parsing
+  const cleaned = cssText.replace(/\/\*[\s\S]*?\*\//g, '').trim()
+  const text = cleaned
 
   // Match each rule: selector { declarations }
   const ruleRe = /([^{]+)\{([^}]*)\}/g

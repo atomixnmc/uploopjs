@@ -267,6 +267,27 @@ describe('css tagged template', () => {
     const result = css`.btn { color: red; font-size: 1rem }`
     expect(result.graph['.btn']).toEqual({ color: 'red', 'font-size': '1rem' })
   })
+
+  it('strips CSS comments from output', () => {
+    const result = css`
+      /* This is a comment */
+      .btn { color: red; /* inline comment */ font-size: 1rem }
+      /* Multi-line
+         comment */
+      .icon { width: 1em }
+    `
+    expect(result.graph['.btn']).toEqual({ color: 'red', 'font-size': '1rem' })
+    expect(result.graph['.icon']).toEqual({ width: '1em' })
+    expect(result.text).not.toContain('/*')
+    expect(result.text).not.toContain('comment')
+  })
+
+  it('handles CSS with only comments', () => {
+    const result = css`/* just a comment */`
+    expect(result.graph).toEqual({})
+    expect(result.json).toEqual([])
+    expect(result.text).toBe('')
+  })
 })
 
 describe('parseCSS()', () => {
@@ -283,5 +304,12 @@ describe('parseCSS()', () => {
     expect(result.graph).toEqual({})
     expect(result.json).toEqual([])
     expect(result.text).toBe('')
+  })
+
+  it('strips comments from parsed CSS string', () => {
+    const result = parseCSS('/* header */ .nav { color: blue } /* footer */')
+    expect(result.graph['.nav']).toEqual({ color: 'blue' })
+    expect(result.text).not.toContain('/*')
+    expect(result.text).toBe('.nav { color: blue }')
   })
 })
