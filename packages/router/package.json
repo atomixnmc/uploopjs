@@ -1,6 +1,6 @@
 {
   "name": "@uploop/router",
-  "version": "0.8.0",
+  "version": "0.1.0",
   "description": "Uploop router — functional route matching and navigation",
   "type": "module",
   "main": "./src/index.js",

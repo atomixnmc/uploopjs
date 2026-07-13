@@ -1,6 +1,6 @@
 {
   "name": "@uploop/lint",
-  "version": "0.8.0",
+  "version": "0.1.0",
   "description": "Syntax checker and validator for Uploop components — catches common mistakes before they reach the browser",
   "type": "module",
   "main": "./src/index.js",

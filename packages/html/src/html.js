@@ -168,7 +168,7 @@ function parseAttrs(attrStr) {
  * looks up the component registry, and replaces with rendered output.
  * Returns the string with all known component tags resolved.
  */
-export function resolvePascalTags(str) {
+function resolvePascalTags(str) {
   let result = ''
   let i = 0
   const len = str.length
@@ -214,113 +214,28 @@ export function resolvePascalTags(str) {
       continue
     }
 
-    // Skip whitespace after tag name
+    // Skip whitespace, then find '/>'
     while (i < len && isSpace(str.charCodeAt(i))) i++
-
-    // Check for self-closing '/>'
-    const selfCloseAt = str.indexOf('/>', i)
-    if (selfCloseAt !== -1 && (selfCloseAt < (str.indexOf('>', i) === -1 ? len : str.indexOf('>', i)))) {
-      // Self-closing tag: <Component ... />
-      const attrStr = str.slice(i, selfCloseAt)
-      const props = parseAttrs(attrStr)
-      i = selfCloseAt + 2
-
-      try {
-        if (typeof comp.create === 'function') {
-          const inst = comp.create(props)
-          const rendered = inst.render()
-          result += rendered
-        }
-      } catch (e) {
-        console.warn('[Uploop] failed to render component "' + tagName + '":', e)
-      }
-      continue
-    }
-
-    // Find the '>' that closes the opening tag (skip attributes).
-    // Scan forward tracking quote state to skip '>' inside quoted values.
-    let inQuote = 0
-    while (i < len) {
-      const ch = str.charCodeAt(i)
-      if (inQuote) {
-        if (ch === inQuote) inQuote = 0
-      } else if (ch === $DQ || ch === $SQ) {
-        inQuote = ch
-      } else if (ch === $GT) {
-        break  // found closing '>'
-      }
-      i++
-    }
-    if (i >= len || str.charCodeAt(i) !== $GT) {
+    const close = str.indexOf('/>', i)
+    if (close === -1) {
+      // No closing '/>' — not a self-closing tag, restore
       result += '<' + tagName + str.slice(tagStart + tagName.length, i)
       continue
     }
 
-    // Paired tag: find matching closing tag </TagName>
-    const openTagEnd = i  // position of '>'
-    const attrsStr = str.slice(tagStart + tagName.length, openTagEnd).replace(/^\s+|\s+$/g, '')
-    const props = attrsStr ? parseAttrs(attrsStr) : {}
+    // Parse attributes between tag name + whitespace and '/>'
+    const attrStr = str.slice(i, close)
+    const props = parseAttrs(attrStr)
 
-    // Search for </TagName>
-    const closingTag = '</' + tagName
-    let depth = 1
-    let searchFrom = openTagEnd + 1
-    let contentEnd = -1
+    // Skip past '/>'
+    i = close + 2
 
-    while (searchFrom < len) {
-      const nextOpen = str.indexOf('<' + tagName, searchFrom)
-      const nextClose = str.indexOf(closingTag, searchFrom)
-
-      if (nextClose === -1) break  // no closing tag found
-
-      if (nextOpen !== -1 && nextOpen < nextClose) {
-        // Nested same-name tag — must be self-closing or paired
-        const afterOpen = nextOpen + tagName.length + 1
-        if (str.indexOf('/>', nextOpen) < nextClose && str.indexOf('/>', nextOpen) !== -1) {
-          depth++
-          searchFrom = str.indexOf('/>', nextOpen) + 2
-          continue
-        }
-      }
-
-      depth--
-      if (depth === 0) {
-        contentEnd = nextClose
-        break
-      }
-      searchFrom = nextClose + closingTag.length
-    }
-
-    if (contentEnd === -1) {
-      // No matching closing tag — restore
-      result += '<' + tagName + str.slice(tagStart + tagName.length, openTagEnd + 1)
-      i = openTagEnd + 1
-      continue
-    }
-
-    // Extract inner content (will resolve after parent sets up context)
-    const innerHTML = str.slice(openTagEnd + 1, contentEnd)
-
-    // Skip past </TagName>
-    i = contentEnd + closingTag.length + 1  // +1 for '>'
-
-    // Parent-first traversal: create component NOW (compose sets up context),
-    // THEN resolve children so they find the parent's context.
+    // Create component instance and render
     try {
       if (typeof comp.create === 'function') {
-        // Create parent component first — compose runs, registers in context
         const inst = comp.create(props)
-        const parentRendered = inst.render()
-
-        // Now resolve children — they'll find the context set up by parent
-        const childrenHTML = resolvePascalTags(innerHTML)
-
-        // Combine: parent wrapper HTML + children
-        if (parentRendered && typeof parentRendered === 'string') {
-          result += parentRendered + childrenHTML
-        } else {
-          result += childrenHTML
-        }
+        const rendered = inst.render()
+        result += rendered
       }
     } catch (e) {
       console.warn('[Uploop] failed to render component "' + tagName + '":', e)

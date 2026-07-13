@@ -8,8 +8,6 @@ export { createScope } from './scope.js'
 export { use } from './plugin.js'
 export { createDOMExecution, createStringExecution, validateExecutionTarget, createRunner } from './execution.js'
 export { component, createComponentType } from './component.js'
-export { createRef, clearRefs, inspectRefs } from './ref.js'
-export { xml, parseXML } from './xml.js'
 
 // Utilities
 export { uuid, seq } from './uuid.js'

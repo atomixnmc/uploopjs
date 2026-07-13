@@ -1,6 +1,6 @@
 {
   "name": "@uploop/html",
-  "version": "0.8.0",
+  "version": "0.1.0",
   "description": "Uploop HTML/DOM adapter — WebComponent, template literal, CSP-safe events",
   "type": "module",
   "main": "./src/index.js",

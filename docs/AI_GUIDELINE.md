@@ -145,8 +145,6 @@ Follow [Semantic Versioning](https://semver.org/):
 
 Current versions are in each package's `package.json`. Bump when a phase completes.
 
-**Sub-package versioning rule:** All `packages/*/package.json` versions MUST stay equal to the root `uploopjs` `package.json` version. When bumping the root, bump every sub-package to match. This simplifies the version scheme — the ecosystem ships as one unit.
-
 ### Progress tracking
 
 Files in `docs/progress/`:

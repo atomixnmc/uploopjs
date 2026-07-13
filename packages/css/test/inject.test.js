@@ -1,6 +1,6 @@
 // ─── Inject Tests ─────────────────────────────────────────────
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { getSheet, inject, removeSheet, createAdoptedSheet, insertOnce, clearRuleRegistry, injectBase } from '../src/inject.js'
+import { getSheet, inject, removeSheet, createAdoptedSheet } from '../src/inject.js'
 
 describe('getSheet()', () => {
   it('returns a CSSStyleSheet instance', () => {
@@ -43,22 +43,6 @@ describe('inject()', () => {
     // Should have rules for 0 and 1 only
     expect(result.count).toBeGreaterThan(0)
   })
-
-  it('dedup: skips already-injected rules', () => {
-    removeSheet()
-    const first = inject({ groups: ['display'] })
-    const second = inject({ groups: ['display'] })
-    // Second call should skip all rules (dedup)
-    expect(second.skipped).toBe(first.count)
-    expect(second.count).toBe(0)
-  })
-
-  it('force option re-injects skipped rules', () => {
-    removeSheet()
-    const first = inject({ groups: ['display'] })
-    const second = inject({ groups: ['display'], force: true })
-    expect(second.count).toBe(first.count)
-  })
 })
 
 describe('removeSheet()', () => {
@@ -69,39 +53,6 @@ describe('removeSheet()', () => {
     removeSheet()
     const after = document.querySelector('style[data-uploop="utilities"]')
     expect(after).toBeNull()
-  })
-})
-
-describe('clearRuleRegistry()', () => {
-  it('clears the dedup registry', () => {
-    removeSheet()
-    const first = inject({ groups: ['display'] })
-    clearRuleRegistry()
-    const second = inject({ groups: ['display'] })
-    expect(second.count).toBe(first.count)
-  })
-})
-
-describe('injectBase()', () => {
-  it('injects only base CSS variables', () => {
-    removeSheet()
-    const result = injectBase()
-    expect(result.count).toBeGreaterThan(0)
-  })
-})
-
-describe('insertOnce()', () => {
-  it('inserts a rule and returns true', () => {
-    const sheet = getSheet()
-    const ok = insertOnce(sheet, '.test-once { color: red }')
-    expect(ok).toBe(true)
-  })
-
-  it('returns false for duplicate insert', () => {
-    const sheet = getSheet()
-    insertOnce(sheet, '.test-dupe { color: blue }')
-    const ok = insertOnce(sheet, '.test-dupe { color: blue }')
-    expect(ok).toBe(false)
   })
 })
 

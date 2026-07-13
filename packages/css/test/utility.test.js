@@ -92,89 +92,6 @@ describe('utility()', () => {
     const rules = utility()
     expect(rules.length).toBeGreaterThan(500)
   })
-
-  it('generates z-index rules', () => {
-    const rules = utility({ groups: ['zIndex'] })
-    expect(rules.find(r => r.selector === '.z-10')).toBeDefined()
-    expect(rules.find(r => r.selector === '.z-auto')).toBeDefined()
-  })
-
-  it('generates opacity rules', () => {
-    const rules = utility({ groups: ['opacity'] })
-    expect(rules.find(r => r.selector === '.opacity-0')).toBeDefined()
-    expect(rules.find(r => r.selector === '.opacity-100')).toBeDefined()
-  })
-
-  it('generates flex-grow/shrink rules', () => {
-    const rules = utility({ groups: ['flexGrow'] })
-    expect(rules.find(r => r.selector === '.flex-grow')).toBeDefined()
-    expect(rules.find(r => r.selector === '.flex-shrink-0')).toBeDefined()
-  })
-
-  it('generates gap-x/gap-y rules', () => {
-    const rules = utility({ groups: ['gapXY'] })
-    expect(rules.find(r => r.selector === '.gap-x-4')).toBeDefined()
-    expect(rules.find(r => r.selector === '.gap-y-2')).toBeDefined()
-  })
-
-  it('generates inset rules', () => {
-    const rules = utility({ groups: ['inset'] })
-    expect(rules.find(r => r.selector === '.top-0')).toBeDefined()
-    expect(rules.find(r => r.selector === '.inset-4')).toBeDefined()
-    expect(rules.find(r => r.selector === '.inset-x-2')).toBeDefined()
-  })
-
-  it('generates transition rules', () => {
-    const rules = utility({ groups: ['transition'] })
-    expect(rules.find(r => r.selector === '.transition-all')).toBeDefined()
-    expect(rules.find(r => r.selector === '.duration-200')).toBeDefined()
-    expect(rules.find(r => r.selector === '.ease-linear')).toBeDefined()
-  })
-
-  it('generates outline rules', () => {
-    const rules = utility({ groups: ['outline'] })
-    expect(rules.find(r => r.selector === '.outline-none')).toBeDefined()
-    expect(rules.find(r => r.selector === '.outline-solid')).toBeDefined()
-  })
-
-  it('generates visibility rules', () => {
-    const rules = utility({ groups: ['visibility'] })
-    expect(rules.find(r => r.selector === '.visible')).toBeDefined()
-    expect(rules.find(r => r.selector === '.invisible')).toBeDefined()
-  })
-
-  it('generates pointer-events rules', () => {
-    const rules = utility({ groups: ['pointerEvents'] })
-    expect(rules.find(r => r.selector === '.pointer-events-none')).toBeDefined()
-  })
-
-  it('generates resize rules', () => {
-    const rules = utility({ groups: ['resize'] })
-    expect(rules.find(r => r.selector === '.resize-none')).toBeDefined()
-  })
-
-  it('generates user-select rules', () => {
-    const rules = utility({ groups: ['userSelect'] })
-    expect(rules.find(r => r.selector === '.select-none')).toBeDefined()
-  })
-
-  it('generates overflow-x/y rules', () => {
-    const rules = utility({ groups: ['overflowXY'] })
-    expect(rules.find(r => r.selector === '.overflow-x-auto')).toBeDefined()
-    expect(rules.find(r => r.selector === '.overflow-y-hidden')).toBeDefined()
-  })
-
-  it('generates transform rules', () => {
-    const rules = utility({ groups: ['transform'] })
-    expect(rules.find(r => r.selector === '.transform-none')).toBeDefined()
-    expect(rules.find(r => r.selector === '.transform-scale-150')).toBeDefined()
-  })
-
-  it('generates order rules', () => {
-    const rules = utility({ groups: ['order'] })
-    expect(rules.find(r => r.selector === '.order-first')).toBeDefined()
-    expect(rules.find(r => r.selector === '.order-5')).toBeDefined()
-  })
 })
 
 describe('generateUtilities()', () => {
@@ -200,20 +117,5 @@ describe('utilityDefs', () => {
     expect(utilityDefs.overflow).toBeDefined()
     expect(utilityDefs.cursor).toBeDefined()
     expect(utilityDefs.background).toBeDefined()
-    // New groups in v0.2.0
-    expect(utilityDefs.zIndex).toBeDefined()
-    expect(utilityDefs.opacity).toBeDefined()
-    expect(utilityDefs.flexGrow).toBeDefined()
-    expect(utilityDefs.gapXY).toBeDefined()
-    expect(utilityDefs.inset).toBeDefined()
-    expect(utilityDefs.transition).toBeDefined()
-    expect(utilityDefs.outline).toBeDefined()
-    expect(utilityDefs.visibility).toBeDefined()
-    expect(utilityDefs.pointerEvents).toBeDefined()
-    expect(utilityDefs.resize).toBeDefined()
-    expect(utilityDefs.userSelect).toBeDefined()
-    expect(utilityDefs.overflowXY).toBeDefined()
-    expect(utilityDefs.transform).toBeDefined()
-    expect(utilityDefs.order).toBeDefined()
   })
 })

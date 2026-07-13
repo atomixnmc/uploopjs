@@ -1,6 +1,6 @@
 {
   "name": "@uploop/state-machine",
-  "version": "0.8.0",
+  "version": "0.1.0",
   "description": "Uploop state machine — FSM as a HyperGraph loop",
   "type": "module",
   "main": "./src/index.js",

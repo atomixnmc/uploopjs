@@ -43,10 +43,7 @@ export {
   getSheet,
   inject,
   removeSheet,
-  createAdoptedSheet,
-  insertOnce,
-  clearRuleRegistry,
-  injectBase
+  createAdoptedSheet
 } from './inject.js'
 
 // Dynamic style creation (jQuery-inspired)
@@ -58,9 +55,7 @@ export {
 } from './dynamic.js'
 
 // Chainable style builder
-// css()`...` tagged template returns parsed CSS
-// css().props() sets multiple props at once
-export { css, css2, parseCSS } from './chain.js'
+export { css } from './chain.js'
 
 // Color utilities
 export {
@@ -94,32 +89,3 @@ export {
   stats,
   hasTracking
 } from './optimizer.js'
-
-// ── New in v0.2.0 ──────────────────────────────────────────
-
-// Style composition utilities
-export {
-  compose,
-  extend,
-  clone,
-  pick,
-  omit,
-  styleToInline,
-  deepMerge
-} from './compose.js'
-
-// CSS minification & optimization
-export {
-  minifyCSS,
-  dedupDeclarations,
-  normalizeUnits,
-  prefixProp,
-  prefixCSS
-} from './minify.js'
-
-// Batch & keyframe creation
-export {
-  batch,
-  keyframes,
-  atMedia
-} from './batch.js'

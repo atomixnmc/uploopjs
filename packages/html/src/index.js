@@ -1,4 +1,4 @@
-export { html, isHtmlTemplate, applyBindings, componentTag, registerComponent, processUploopAttributes, consumeContext, resolveScope, registerScope, resolvePascalTags } from './html.js'
+export { html, isHtmlTemplate, applyBindings, componentTag, registerComponent, processUploopAttributes, consumeContext, resolveScope, registerScope } from './html.js'
 export { component, createComponentType } from './component.js'
 export { defineElement } from './element.js'
 export { bindEvents, unbindEvents } from './events.js'

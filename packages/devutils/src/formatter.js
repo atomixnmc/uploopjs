@@ -168,31 +168,11 @@ function formatState(state, indent = 2) {
       const innerKeys = Object.keys(val)
       if (innerKeys.length === 0) {
         lines.push(`${prefix}${key}: {}`)
-      } else if (innerKeys.length <= 2) {
+      } else if (innerKeys.length <= 5) {
         const display = innerKeys.map(k => `${k}: ${truncate(val[k])}`).join(', ')
         lines.push(`${prefix}${key}: { ${display} }`)
       } else {
-        // Expand 3+ keys onto separate lines
-        lines.push(`${prefix}${key}: {`)
-        for (const ik of innerKeys) {
-          const iv = val[ik]
-          if (iv && typeof iv === 'object' && !Array.isArray(iv) && Object.keys(iv).length > 0) {
-            const subKeys = Object.keys(iv)
-            if (subKeys.length <= 2) {
-              const subDisplay = subKeys.map(sk => `${sk}: ${truncate(iv[sk])}`).join(', ')
-              lines.push(`${prefix}  ${ik}: { ${subDisplay} }`)
-            } else {
-              lines.push(`${prefix}  ${ik}: {`)
-              for (const sk of subKeys) {
-                lines.push(`${prefix}    ${sk}: ${truncate(iv[sk])}`)
-              }
-              lines.push(`${prefix}  }`)
-            }
-          } else {
-            lines.push(`${prefix}  ${ik}: ${truncate(iv)}`)
-          }
-        }
-        lines.push(`${prefix}}`)
+        lines.push(`${prefix}${key}: { ${innerKeys.length} keys }`)
       }
     } else {
       lines.push(`${prefix}${key}: ${truncate(val)}`)
