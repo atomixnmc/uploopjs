@@ -1,0 +1,18 @@
+{
+  "name": "@uploop/store",
+  "version": "0.8.0",
+  "description": "Uploop external store — selectors, derived state, persistence",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@uploop/core": "workspace:*"
+  }
+}

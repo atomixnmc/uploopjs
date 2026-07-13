@@ -1,0 +1,9 @@
+{
+  "name": "@uploop/state-machine",
+  "version": "0.8.0",
+  "description": "Uploop state machine — FSM as a HyperGraph loop",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": { ".": { "import": "./src/index.js" } },
+  "dependencies": { "@uploop/core": "workspace:*" }
+}

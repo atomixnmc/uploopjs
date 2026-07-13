@@ -1,7 +1,7 @@
 {
-  "name": "@uploop/css",
+  "name": "@uploop/core",
   "version": "0.8.0",
-  "description": "Uploop CSS utility engine — design tokens, utility classes, themes",
+  "description": "Uploop core update protocol — pure, no DOM, no browser",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
@@ -9,10 +9,10 @@
       "import": "./src/index.js"
     }
   },
-  "scripts": {
-    "test": "vitest run"
-  },
   "files": [
     "src"
-  ]
+  ],
+  "scripts": {
+    "test": "vitest"
+  }
 }

@@ -1,0 +1,11 @@
+{
+  "name": "@uploop/devutils",
+  "version": "0.8.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": { ".": { "import": "./src/index.js" } },
+  "dependencies": {
+    "@uploop/core": "workspace:*",
+    "@uploop/html": "workspace:*"
+  }
+}

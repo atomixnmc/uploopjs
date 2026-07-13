@@ -1,0 +1,21 @@
+{
+  "name": "@uploop/schema",
+  "version": "0.8.0",
+  "description": "Uploop schema engine — data shapes for HyperGraph. JavaScript-functional. AI-readable.",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@uploop/core": "workspace:*"
+  }
+}

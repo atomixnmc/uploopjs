@@ -1,0 +1,27 @@
+{
+  "name": "uploopjs",
+  "private": true,
+  "version": "0.8.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "pnpm run build -ws --if-present",
+    "preview": "vite preview",
+    "test": "vitest",
+    "sst:demo": "pnpm --filter uploop-server-examples dev"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "jsdom": "^29.1.1",
+    "vite": "^5.2.0",
+    "vitest": "^1.6.0",
+    "ws": "^8.21.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "checkJs": true,
+    "strict": false
+  },
+  "include": ["packages/*/src/**/*.js", "examples/*/main.js", "main.js"],
+  "exclude": ["node_modules", "dist", "_archive"]
+}

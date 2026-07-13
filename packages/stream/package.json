@@ -1,0 +1,9 @@
+{
+  "name": "@uploop/stream",
+  "version": "0.8.0",
+  "description": "Uploop binary streaming — schema-to-binary codec, zero-copy, self-framing",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": { ".": { "import": "./src/index.js" } },
+  "dependencies": { "@uploop/schema": "workspace:*" }
+}
