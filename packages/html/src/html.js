@@ -356,12 +356,18 @@ export function html(strings, ...values) {
   const idOffset = { count: 0 }
   const fragments = []
 
+  // Accumulated static prefix across all parts — needed so
+  // isInsideAttribute can track quote state across multi-interpolation
+  // attributes like style="width:${a}px;height:${b}px"
+  let _accPrefix = ''
+
   // Metadata describing each dynamic position for incremental patching
   const parts = []
   const graphParts = []
 
   for (let i = 0; i < strings.length; i++) {
     let str = strings[i]
+    _accPrefix += str
 
     if (i < values.length) {
       const value = values[i]
@@ -425,7 +431,7 @@ export function html(strings, ...values) {
             const id = 'b' + (++idOffset.count)
             const strVal = String(v ?? '')
             // Only wrap in markers if we're in text content, not an attribute value
-            if (isInsideAttribute(str)) {
+            if (isInsideAttribute(_accPrefix)) {
               html += strVal
             } else {
               html += '<!-- up:' + id + ' -->' + strVal + '<!-- /up:' + id + ' -->'
@@ -441,7 +447,7 @@ export function html(strings, ...values) {
         // (style, class, SVG attrs, aria-label, etc. would break).
         const id = 'b' + (++idOffset.count)
         const strVal = String(value ?? '')
-        if (isInsideAttribute(str)) {
+        if (isInsideAttribute(_accPrefix)) {
           fragments.push(str + strVal)
         } else {
           fragments.push(str + '<!-- up:' + id + ' -->' + strVal + '<!-- /up:' + id + ' -->')
