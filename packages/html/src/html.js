@@ -81,6 +81,50 @@ function isInsideAttribute(str) {
 }
 
 /**
+ * Track raw-text element depth across template parts.
+ * Text inside <style> and <script> must never be wrapped —
+ * browsers parse it as raw CSS/JS, not HTML.
+ *
+ * Returns the new depth after processing `str`.
+ *
+ * @param {string} str — the static prefix
+ * @param {number} depth — current raw-text depth
+ * @returns {number} new depth
+ */
+function trackRawTextDepth(str, depth) {
+  const lower = str.toLowerCase()
+  let i = 0
+  while (i < lower.length) {
+    const lt = lower.indexOf('<', i)
+    if (lt === -1) break
+    // Check for closing tag first (so </style> doesn't count as opening)
+    if (lower.startsWith('</style', lt)) {
+      depth = Math.max(0, depth - 1)
+      i = lt + 8
+    } else if (lower.startsWith('</script', lt)) {
+      depth = Math.max(0, depth - 1)
+      i = lt + 9
+    } else if (lower.startsWith('<style', lt)) {
+      // Only count if it's actually a tag (next char is >, space, or /)
+      const next = lower[lt + 6]
+      if (!next || next === '>' || next === ' ' || next === '\n' || next === '\r' || next === '\t') {
+        depth++
+      }
+      i = lt + 6
+    } else if (lower.startsWith('<script', lt)) {
+      const next = lower[lt + 7]
+      if (!next || next === '>' || next === ' ' || next === '\n' || next === '\r' || next === '\t') {
+        depth++
+      }
+      i = lt + 7
+    } else {
+      i = lt + 1
+    }
+  }
+  return depth
+}
+
+/**
  * Detect a binding suffix at the end of a static string part
  * (the text immediately before `${...}` in the template literal).
  *
@@ -361,6 +405,10 @@ export function html(strings, ...values) {
   // attributes like style="width:${a}px;height:${b}px"
   let _accPrefix = ''
 
+  // Track depth of raw-text elements (<style>, <script>) — text inside
+  // these must never be wrapped in <up-t> as browsers parse it as CSS/JS.
+  let _rawTextDepth = 0
+
   // Metadata describing each dynamic position for incremental patching
   const parts = []
   const graphParts = []
@@ -368,6 +416,7 @@ export function html(strings, ...values) {
   for (let i = 0; i < strings.length; i++) {
     let str = strings[i]
     _accPrefix += str
+    _rawTextDepth = trackRawTextDepth(str, _rawTextDepth)
 
     if (i < values.length) {
       const value = values[i]
@@ -430,7 +479,7 @@ export function html(strings, ...values) {
           } else {
             const id = 'b' + (++idOffset.count)
             const strVal = String(v ?? '')
-            if (isInsideAttribute(_accPrefix)) {
+            if (isInsideAttribute(_accPrefix) || _rawTextDepth > 0) {
               html += strVal
             } else {
               html += '<up-t data-up-id="' + id + '">' + strVal + '</up-t>'
@@ -446,7 +495,7 @@ export function html(strings, ...values) {
         // (style, class, SVG attrs, aria-label, etc. would break).
         const id = 'b' + (++idOffset.count)
         const strVal = String(value ?? '')
-        if (isInsideAttribute(_accPrefix)) {
+        if (isInsideAttribute(_accPrefix) || _rawTextDepth > 0) {
           fragments.push(str + strVal)
           parts.push({ id, type: 'text', value, _inAttr: true })
         } else {
