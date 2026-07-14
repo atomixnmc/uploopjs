@@ -320,7 +320,7 @@ function isLoopValue(value) {
   return !!(value && typeof value === 'object' && value.__uploopLoop === true)
 }
 
-function resolveValue(value, bindings, idOffset, graphParts) {
+function resolveValue(value, bindings, idOffset, graphParts, parts) {
   if (isLoopValue(value)) {
     const id = 'b' + (++idOffset.count)
     const entries = value.entries || []
@@ -336,13 +336,80 @@ function resolveValue(value, bindings, idOffset, graphParts) {
 
     let html = ''
     for (const entry of entries) {
-      html += resolveValue(entry.view, bindings, idOffset, graphParts)
+      html += resolveValue(entry.view, bindings, idOffset, graphParts, parts)
     }
     return html
   }
   if (value && typeof value === 'object' && 'template' in value && 'bindings' in value) {
-    // Nested template descriptor — relabel its binding IDs to avoid collisions
+    // Nested template descriptor — relabel its binding IDs to avoid collisions.
+    // Also merge nested parts so computeDelta sees all dynamic positions.
     const nestedBindings = value.bindings || []
+    const nestedParts = value.parts || []
+
+    // Relabel part IDs from nested templates
+    if (nestedParts.length > 0) {
+      const oldToNewParts = new Map()
+      for (const p of nestedParts) {
+        const oldId = p.id
+        const newId = 'b' + (++idOffset.count)
+        oldToNewParts.set(oldId, newId)
+        // Push relabeled part to outer parts (preserving _inAttr flag)
+        const relabeled = { ...p, id: newId }
+        if (parts) parts.push(relabeled)
+        // graphParts gets just the value metadata (no DOM-specific _inAttr)
+        graphParts.push({ id: newId, type: p.type, value: p.value, name: p.name })
+      }
+
+      // Rewrite IDs in the nested template HTML for binding markers
+      let html = value.toString()
+      const TEMP = '\x00'
+
+      // Phase 1: replace old IDs with temp markers
+      for (const [oldId, newId] of oldToNewParts) {
+        // data-up-prop="name:oldId" → data-up-prop="name:newId"
+        const search = ':' + oldId + '"'
+        const marker = ':' + TEMP + newId + TEMP + '"'
+        html = html.split(search).join(marker)
+        // data-up-id="oldId" → data-up-id="newId"
+        const search2 = '"' + oldId + '"'
+        const marker2 = '"' + TEMP + newId + TEMP + '"'
+        html = html.split(search2).join(marker2)
+      }
+      // Phase 2: unwrap temp markers to final IDs
+      for (const [, newId] of oldToNewParts) {
+        const marker = ':' + TEMP + newId + TEMP + '"'
+        const final = ':' + newId + '"'
+        html = html.split(marker).join(final)
+        const marker2 = '"' + TEMP + newId + TEMP + '"'
+        const final2 = '"' + newId + '"'
+        html = html.split(marker2).join(final2)
+      }
+
+      if (nestedBindings.length > 0) {
+        const oldToNew = new Map()
+        for (const b of nestedBindings) {
+          const oldId = b.id
+          const newId = 'b' + (++idOffset.count)
+          oldToNew.set(oldId, newId)
+          b.id = newId
+        }
+        bindings.push(...nestedBindings)
+        // Rewrite binding IDs in HTML
+        for (const [oldId, newId] of oldToNew) {
+          const search = ':' + oldId + '"'
+          const marker = ':' + TEMP + newId + TEMP + '"'
+          html = html.split(search).join(marker)
+        }
+        for (const [, newId] of oldToNew) {
+          const marker = ':' + TEMP + newId + TEMP + '"'
+          const final = ':' + newId + '"'
+          html = html.split(marker).join(final)
+        }
+      }
+
+      return html
+    }
+
     if (nestedBindings.length > 0) {
       const oldToNew = new Map()
       for (const b of nestedBindings) {
@@ -352,10 +419,7 @@ function resolveValue(value, bindings, idOffset, graphParts) {
         b.id = newId
       }
       bindings.push(...nestedBindings)
-      // Rewrite IDs in the nested template HTML.
-      // Two-phase replacement to prevent cascading:
-      //   b1→b2 then b2→b3 would turn original b1 into b3.
-      //   Phase 1 replaces with temp markers, Phase 2 unwraps them.
+      // Rewrite IDs in the nested template HTML
       let html = value.toString()
       const TEMP = '\x00'
       for (const [oldId, newId] of oldToNew) {
@@ -378,7 +442,7 @@ function resolveValue(value, bindings, idOffset, graphParts) {
     let str = ''
     for (const v of value) {
       if (v && typeof v === 'object' && 'template' in v && 'bindings' in v) {
-        str += resolveValue(v, bindings, idOffset, graphParts)
+        str += resolveValue(v, bindings, idOffset, graphParts, parts)
       } else {
         str += v === null || v === undefined ? '' : String(v)
       }
@@ -460,22 +524,22 @@ export function html(strings, ...values) {
 
       // 3. Handle the value — text interpolation, loop, or nested template merge
       if (isLoopValue(value)) {
-        const strVal = resolveValue(value, bindings, idOffset, graphParts)
+        const strVal = resolveValue(value, bindings, idOffset, graphParts, parts)
         fragments.push(str + strVal)
       } else if (value && typeof value === 'object' && 'template' in value && 'bindings' in value) {
         // Nested template descriptor — merge bindings, inline HTML.
         // The nested template's own parts live in its descriptor,
         // and its markers are already embedded in the returned HTML.
-        const strVal = resolveValue(value, bindings, idOffset, graphParts)
+        const strVal = resolveValue(value, bindings, idOffset, graphParts, parts)
         fragments.push(str + strVal)
       } else if (Array.isArray(value)) {
         // Array — handle each element individually
         let html = str
         for (const v of value) {
           if (isLoopValue(v)) {
-            html += resolveValue(v, bindings, idOffset, graphParts)
+            html += resolveValue(v, bindings, idOffset, graphParts, parts)
           } else if (v && typeof v === 'object' && 'template' in v && 'bindings' in v) {
-            html += resolveValue(v, bindings, idOffset, graphParts)
+            html += resolveValue(v, bindings, idOffset, graphParts, parts)
           } else {
             const id = 'b' + (++idOffset.count)
             const strVal = String(v ?? '')
