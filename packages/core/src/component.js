@@ -167,6 +167,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
             // Structural change — full replace
             const snap = createSnapshot({ ...(_exec.hooks?.preReplace?.(element) ?? {}), bindings })
             _exec.replace(element, htmlStr)
+            if (_exec._buildGraph) _exec._buildGraph(element)
             if (_exec.hooks?.postReplace) _exec.hooks.postReplace(element, snap)
           } else {
             // Value-only change — surgical patch
@@ -183,6 +184,8 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       // Full replace: first render, replace strategy, or no patch method
       const snap = createSnapshot({ ...(_exec.hooks?.preReplace?.(element) ?? {}), bindings })
       _exec.replace(element, htmlStr)
+      // Build compact graph NOW — before postReplace strips data-up-* attrs
+      if (_exec._buildGraph) _exec._buildGraph(element)
       if (_exec.hooks?.postReplace) _exec.hooks.postReplace(element, snap)
       _prevResult = result
     }

@@ -240,15 +240,12 @@ export function createDOMPatchExecution(domCtx) {
     ...full,
     strategy: base.strategy, // 'patch' from core v0.9
 
-    // Core's patch method already handles marker-based resolution
-    // for text (<!-- up:id -->), prop ([data-up-prop]), and bool ([data-up-bool])
+    // Core's patch method uses compact graph for O(1) DOM node resolution
     patch: base.patch,
 
-    hooks: {
-      ...full.hooks,
-      // Patch strategy: no pre/post replace needed — DOM survives
-      preReplace() { return {} },
-      postReplace() {}
-    }
+    // Keep full hooks — the replace path (first render) still needs
+    // event binding, attribute scanning, and resource restoration.
+    // The patch path (subsequent renders) doesn't touch hooks at all.
+    hooks: full.hooks
   }
 }

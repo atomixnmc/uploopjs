@@ -448,10 +448,11 @@ export function html(strings, ...values) {
         const strVal = String(value ?? '')
         if (isInsideAttribute(_accPrefix)) {
           fragments.push(str + strVal)
+          parts.push({ id, type: 'text', value, _inAttr: true })
         } else {
           fragments.push(str + '<up-t data-up-id="' + id + '">' + strVal + '</up-t>')
+          parts.push({ id, type: 'text', value })
         }
-        parts.push({ id, type: 'text', value })
         graphParts.push({ id, type: 'text', value })
       }
     } else {

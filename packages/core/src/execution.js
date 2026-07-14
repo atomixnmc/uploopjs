@@ -120,15 +120,48 @@ export function createDOMExecution() {
       target.innerHTML = output
     },
 
+    // Called by component after replace, before postReplace (attrs still present)
+    _buildGraph(target) {
+      _compactGraph = new Map()
+      for (const el of target.querySelectorAll('[data-up-id]')) {
+        _compactGraph.set(el.getAttribute('data-up-id'), el)
+      }
+      for (const el of target.querySelectorAll('[data-up-prop]')) {
+        const attr = el.getAttribute('data-up-prop')
+        const colon = attr.lastIndexOf(':')
+        if (colon > 0) _compactGraph.set(attr.slice(colon + 1), el)
+      }
+      for (const el of target.querySelectorAll('[data-up-bool]')) {
+        const attr = el.getAttribute('data-up-bool')
+        const colon = attr.lastIndexOf(':')
+        if (colon > 0) _compactGraph.set(attr.slice(colon + 1), el)
+      }
+    },
+
     patch(target, prevOutput, nextOutput, delta) {
       if (!delta) return
 
-      // Build compact graph on first patch after replace (lazy init)
+      // Build compact graph on first patch after replace (lazy init).
+      // Index ALL data-up-* attributes: up-id (text), up-prop (property),
+      // up-bool (boolean attr). These get stripped by applyBindings after
+      // first render, so we must capture references before that happens.
       if (!_compactGraph) {
         _compactGraph = new Map()
-        const nodes = target.querySelectorAll('[data-up-id]')
-        for (const el of nodes) {
+        // Text binding points
+        for (const el of target.querySelectorAll('[data-up-id]')) {
           _compactGraph.set(el.getAttribute('data-up-id'), el)
+        }
+        // Prop binding points (may already be stripped by applyBindings)
+        for (const el of target.querySelectorAll('[data-up-prop]')) {
+          const attr = el.getAttribute('data-up-prop')
+          const colon = attr.lastIndexOf(':')
+          if (colon > 0) _compactGraph.set(attr.slice(colon + 1), el)
+        }
+        // Bool binding points
+        for (const el of target.querySelectorAll('[data-up-bool]')) {
+          const attr = el.getAttribute('data-up-bool')
+          const colon = attr.lastIndexOf(':')
+          if (colon > 0) _compactGraph.set(attr.slice(colon + 1), el)
         }
       }
 
@@ -369,7 +402,12 @@ export function computeDelta(prevOutput, nextOutput) {
     const nextVal = p.value
 
     if (prevVal !== nextVal) {
-      if (p.type === 'text') {
+      // Attribute-value changes (style, class, SVG attrs) can't be patched
+      // surgically — HTML doesn't allow elements inside attribute values.
+      // Treat them as structural changes to trigger a full replace.
+      if (p._inAttr || prev._inAttr) {
+        addedParts.push(p)
+      } else if (p.type === 'text') {
         textParts.push({ id: p.id, type: 'text', value: nextVal })
       } else if (p.type === 'prop') {
         propParts.push({ id: p.id, type: 'prop', name: p.name, value: nextVal })
