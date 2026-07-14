@@ -57,6 +57,30 @@ function isWord(c) { return (c >= $a && c <= $z) || (c >= $A && c <= $Z) || (c >
 function isUpper(c) { return c >= $A && c <= $Z }
 
 /**
+ * Check if a static string ends inside a quoted HTML attribute value.
+ * Used to decide whether text markers are safe (text content) or would
+ * corrupt attribute values (style, class, SVG paths, aria-label, etc.).
+ *
+ * Returns true if the last unescaped quote in `str` opens an attribute
+ * that hasn't been closed — meaning any interpolation here is inside
+ * an attribute value.
+ *
+ * @param {string} str — the static prefix before an interpolation
+ * @returns {boolean}
+ */
+function isInsideAttribute(str) {
+  let inDouble = false
+  let inSingle = false
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i)
+    if (c === 92 /* \ */) { i++; continue } // skip escaped char
+    if (c === 34 /* " */ && !inSingle) inDouble = !inDouble
+    else if (c === 39 /* ' */ && !inDouble) inSingle = !inSingle
+  }
+  return inDouble || inSingle
+}
+
+/**
  * Detect a binding suffix at the end of a static string part
  * (the text immediately before `${...}` in the template literal).
  *
@@ -399,16 +423,29 @@ export function html(strings, ...values) {
             html += resolveValue(v, bindings, idOffset, graphParts)
           } else {
             const id = 'b' + (++idOffset.count)
-            html += '<!-- up:' + id + ' -->' + String(v ?? '') + '<!-- /up:' + id + ' -->'
+            const strVal = String(v ?? '')
+            // Only wrap in markers if we're in text content, not an attribute value
+            if (isInsideAttribute(str)) {
+              html += strVal
+            } else {
+              html += '<!-- up:' + id + ' -->' + strVal + '<!-- /up:' + id + ' -->'
+            }
             parts.push({ id, type: 'text', value: v })
             graphParts.push({ id, type: 'text', value: v })
           }
         }
         fragments.push(html)
       } else {
-        // Plain scalar — record value for patch diffing, wrap in markers
+        // Plain scalar — record value for patch diffing.
+        // Only wrap in markers for text content, not attribute values
+        // (style, class, SVG attrs, aria-label, etc. would break).
         const id = 'b' + (++idOffset.count)
-        fragments.push(str + '<!-- up:' + id + ' -->' + String(value ?? '') + '<!-- /up:' + id + ' -->')
+        const strVal = String(value ?? '')
+        if (isInsideAttribute(str)) {
+          fragments.push(str + strVal)
+        } else {
+          fragments.push(str + '<!-- up:' + id + ' -->' + strVal + '<!-- /up:' + id + ' -->')
+        }
         parts.push({ id, type: 'text', value })
         graphParts.push({ id, type: 'text', value })
       }
