@@ -127,13 +127,12 @@ describe('v0.4.0 — Template Parts', () => {
     expect(result.parts.find(p => p.type === 'bool')).toBeTruthy()
   })
 
-  it('template string includes text markers for GDOM surgery (v0.9)', () => {
+  it('template wraps text in up-t elements for compact graph (v0.9)', () => {
     const result = html`<div>Count: ${42}</div>`
-    // v0.9: text values are wrapped in <!-- up:id --> markers for surgical DOM updates
-    expect(result.template).toContain('<!-- up:')
+    // v0.9: text values wrapped in <up-t data-up-id="bN"> for O(1) compact graph lookup
+    expect(result.template).toContain('<up-t data-up-id="')
     expect(result.template).toContain('42')
-    expect(result.template).toContain('<!-- /up:')
-    // Markers wrap the value; 'Count: ' prefix is preserved before the open marker
+    expect(result.template).toContain('</up-t>')
     expect(result.template).toContain('Count: ')
   })
 

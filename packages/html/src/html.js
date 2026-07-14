@@ -430,11 +430,10 @@ export function html(strings, ...values) {
           } else {
             const id = 'b' + (++idOffset.count)
             const strVal = String(v ?? '')
-            // Only wrap in markers if we're in text content, not an attribute value
             if (isInsideAttribute(_accPrefix)) {
               html += strVal
             } else {
-              html += '<!-- up:' + id + ' -->' + strVal + '<!-- /up:' + id + ' -->'
+              html += '<up-t data-up-id="' + id + '">' + strVal + '</up-t>'
             }
             parts.push({ id, type: 'text', value: v })
             graphParts.push({ id, type: 'text', value: v })
@@ -450,7 +449,7 @@ export function html(strings, ...values) {
         if (isInsideAttribute(_accPrefix)) {
           fragments.push(str + strVal)
         } else {
-          fragments.push(str + '<!-- up:' + id + ' -->' + strVal + '<!-- /up:' + id + ' -->')
+          fragments.push(str + '<up-t data-up-id="' + id + '">' + strVal + '</up-t>')
         }
         parts.push({ id, type: 'text', value })
         graphParts.push({ id, type: 'text', value })
@@ -558,94 +557,67 @@ export function applyBindings(root, bindings, send, state) {
 }
 
 /**
- * Find a marker comment node (<!--up:id-->) within root using TreeWalker.
- * @param {Node} root
- * @param {string} id
- * @returns {Comment|null}
+ * Build a Compact Graph — a Map from part ID to DOM element.
+ * Scans the rendered DOM for [data-up-id] elements after first render.
+ * Subsequent patches use O(1) Map lookup instead of DOM walking.
+ *
+ * @param {Element} root — the mounted DOM root element
+ * @returns {Map<string, Element>}
  */
-function findMarker(root, id) {
-  const doc = root.ownerDocument || (typeof document !== 'undefined' ? document : null)
-  if (!doc) return null
-  const SHOW_COMMENT = typeof NodeFilter !== 'undefined' ? NodeFilter.SHOW_COMMENT : 128
-  const walker = doc.createTreeWalker(root, SHOW_COMMENT)
-  const target = 'up:' + id
-  let node
-  while ((node = walker.nextNode())) {
-    const comment = /** @type {Comment} */ (node)
-    if (comment.data && comment.data.trim() === target) return comment
+export function buildCompactGraph(root) {
+  const graph = new Map()
+  if (!root) return graph
+  const nodes = root.querySelectorAll('[data-up-id]')
+  for (const el of nodes) {
+    graph.set(el.getAttribute('data-up-id'), el)
   }
-  return null
+  return graph
 }
 
 /**
- * Apply incremental DOM updates by comparing old and new template results.
- * Only touches DOM nodes whose values actually changed.
+ * GraphTraveller — navigate the compact graph to collect DOM mutations.
+ * No DOM walking, no TreeWalker, no querySelector on subsequent renders.
  *
- * @param {Element} root - the mounted DOM root element
- * @param {Object} oldResult - previous return value from html()
- * @param {Object} newResult - new return value from html()
+ * @param {Map<string, Element>} compactGraph
+ * @param {Object} delta — from computeDelta()
+ * @param {Element} root — fallback for prop/bool resolution
+ * @returns {Array} mutations
  */
-export function patchTemplate(root, oldResult, newResult) {
-  if (!root || !oldResult || !newResult) return
-
-  const oldParts = oldResult.parts || []
-  const newParts = newResult.parts || []
-
-  // Build a map of old values + detect structural changes
-  const oldById = {}
-  for (const p of oldParts) {
-    oldById[p.id] = { value: p.value, type: p.type, name: p.name }
-  }
-
+export function graphTraveller(compactGraph, delta, root) {
   const mutations = []
 
-  for (const p of newParts) {
-    const old = oldById[p.id]
-    if (!old) {
-      // New part added — will be patched via replace on first mismatch
-      continue
-    }
-    const newVal = p.value
-    const oldVal = old.value
-
-    if (p.type === 'text' && oldVal !== newVal) {
-      // Resolve both marker comments and update text between them
-      const open = findMarker(root, p.id)
-      if (open) {
-        // Collect all text nodes between open marker and its close marker
-        const close = findMarker(root, '/' + p.id)
-        if (close) {
-          let node = open.nextSibling
-          while (node && node !== close) {
-            if (node.nodeType === 3) { // TEXT_NODE
-              mutations.push({ node, value: String(newVal ?? '') })
-            }
-            node = node.nextSibling
-          }
-        }
+  if (delta.textParts) {
+    for (const part of delta.textParts) {
+      const el = compactGraph.get(part.id)
+      if (el) {
+        mutations.push({ el, value: String(part.value ?? ''), type: 'text' })
       }
-      // If no marker found, fall back to full replace (first render or non-marked template)
-    } else if (p.type === 'prop' && oldVal !== newVal) {
-      const el = root.querySelector('[data-up-prop="' + p.name + ':' + p.id + '"]')
-      if (el) mutations.push({ el, name: p.name, value: newVal, type: 'prop' })
-    } else if (p.type === 'bool' && oldVal !== newVal) {
-      const el = root.querySelector('[data-up-bool="' + p.name + ':' + p.id + '"]')
-      if (el) mutations.push({ el, name: p.name, value: newVal, type: 'bool' })
     }
-    // Event bindings don't need patching — listeners survive on DOM nodes
   }
 
-  // Apply all mutations in a single synchronous batch to avoid layout thrashing
-  for (const m of mutations) {
-    if (m.type === 'text' || m.node) {
-      m.node.nodeValue = m.value
-    } else if (m.type === 'prop') {
-      m.el[m.name] = m.value
-    } else if (m.type === 'bool') {
-      if (m.value) m.el.setAttribute(m.name, '')
-      else m.el.removeAttribute(m.name)
+  if (delta.propParts) {
+    for (const part of delta.propParts) {
+      let el = compactGraph.get(part.id)
+      if (!el && root) {
+        el = root.querySelector('[data-up-prop="' + part.name + ':' + part.id + '"]')
+        if (el) compactGraph.set(part.id, el)
+      }
+      if (el) mutations.push({ el, name: part.name, value: part.value, type: 'prop' })
     }
   }
+
+  if (delta.boolParts) {
+    for (const part of delta.boolParts) {
+      let el = compactGraph.get(part.id)
+      if (!el && root) {
+        el = root.querySelector('[data-up-bool="' + part.name + ':' + part.id + '"]')
+        if (el) compactGraph.set(part.id, el)
+      }
+      if (el) mutations.push({ el, name: part.name, value: part.value, type: 'bool' })
+    }
+  }
+
+  return mutations
 }
 
 /**

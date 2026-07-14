@@ -104,7 +104,7 @@
 export function createDOMExecution() {
   /** @type {import('./types.js').ExecutionTarget} */
   // Cache: id → resolved DOM node for O(1) subsequent patches
-  const _nodeCache = new Map()
+  let _compactGraph = null
 
   return {
     strategy: 'patch',
@@ -116,69 +116,60 @@ export function createDOMExecution() {
     },
 
     replace(target, output) {
-      _nodeCache.clear()
+      _compactGraph = null
       target.innerHTML = output
     },
 
     patch(target, prevOutput, nextOutput, delta) {
       if (!delta) return
-      const mutations = []
 
-      // Text patches — resolve via comment markers <!-- up:id --> (cached)
-      if (delta.textParts) {
-        for (const part of delta.textParts) {
-          if (part.node) {
-            mutations.push({ node: part.node, value: String(part.value ?? '') })
-          } else {
-            let node = _nodeCache.get('t:' + part.id)
-            if (!node) {
-              const open = _findMarker(target, part.id)
-              if (open) {
-                const close = _findMarker(target, '/' + part.id)
-                node = open.nextSibling
-                while (node && node !== close) {
-                  if (node.nodeType === 3) break // first text node
-                  node = node.nextSibling
-                }
-                if (node) _nodeCache.set('t:' + part.id, node)
-              }
-            }
-            if (node) mutations.push({ node, value: String(part.value ?? '') })
-          }
+      // Build compact graph on first patch after replace (lazy init)
+      if (!_compactGraph) {
+        _compactGraph = new Map()
+        const nodes = target.querySelectorAll('[data-up-id]')
+        for (const el of nodes) {
+          _compactGraph.set(el.getAttribute('data-up-id'), el)
         }
       }
 
-      // Prop patches — resolve via [data-up-prop="name:id"] (cached)
+      const mutations = []
+
+      // Text patches — O(1) lookup via compact graph
+      if (delta.textParts) {
+        for (const part of delta.textParts) {
+          const el = _compactGraph.get(part.id)
+          if (el) mutations.push({ el, value: String(part.value ?? ''), type: 'text' })
+        }
+      }
+
+      // Prop patches — compact graph first, querySelector fallback
       if (delta.propParts) {
         for (const part of delta.propParts) {
-          let el = part.el || _nodeCache.get('p:' + part.id)
+          let el = _compactGraph.get(part.id)
           if (!el) {
             el = target.querySelector('[data-up-prop="' + part.name + ':' + part.id + '"]')
-            if (el) _nodeCache.set('p:' + part.id, el)
+            if (el) _compactGraph.set(part.id, el)
           }
           if (el) mutations.push({ el, name: part.name, value: part.value, type: 'prop' })
         }
       }
 
-      // Bool patches — resolve via [data-up-bool="name:id"] (cached)
+      // Bool patches — compact graph first, querySelector fallback
       if (delta.boolParts) {
         for (const part of delta.boolParts) {
-          let el = part.el || _nodeCache.get('b:' + part.id)
+          let el = _compactGraph.get(part.id)
           if (!el) {
             el = target.querySelector('[data-up-bool="' + part.name + ':' + part.id + '"]')
-            if (el) _nodeCache.set('b:' + part.id, el)
+            if (el) _compactGraph.set(part.id, el)
           }
           if (el) mutations.push({ el, name: part.name, value: part.value, type: 'bool' })
         }
       }
 
-      // New parts (first render after id didn't exist) — skip, handled by full render
-      // Removed parts — skip, old DOM nodes will be cleaned on next replace cycle
-
-      // Apply all mutations together to avoid layout thrashing
+      // Apply all mutations in a single synchronous batch
       for (const m of mutations) {
-        if (m.type === 'text' || ('node' in m && m.node)) {
-          m.node.nodeValue = m.value
+        if (m.type === 'text') {
+          m.el.textContent = m.value
         } else if (m.type === 'prop') {
           m.el[m.name] = m.value
         } else if (m.type === 'bool') {
@@ -240,29 +231,6 @@ export function createDOMExecution() {
       }
     }
   }
-}
-
-/**
- * Find a comment node marker in the DOM.
- * Searches for <!-- up:id --> or <!-- /up:id --> patterns.
- *
- * @param {Element} root
- * @param {string} id
- * @returns {Comment|null}
- */
-function _findMarker(root, id) {
-  const doc = root.ownerDocument || (typeof document !== 'undefined' ? document : null)
-  if (!doc) return null
-  const SHOW_COMMENT = typeof NodeFilter !== 'undefined' ? NodeFilter.SHOW_COMMENT : 128
-  const walker = doc.createTreeWalker(root, SHOW_COMMENT)
-  const target = 'up:' + id
-  let node
-  while ((node = walker.nextNode())) {
-    /** @type {Comment} */
-    const comment = node
-    if (comment.data && comment.data.trim() === target) return comment
-  }
-  return null
 }
 
 /**
