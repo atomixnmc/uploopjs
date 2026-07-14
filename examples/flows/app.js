@@ -692,3 +692,13 @@ export function createDLQDemo() {
     sources: () => Object.keys(dlq.stats()),
   };
 }
+
+export function mountShowcase(root = document.getElementById('root')) {
+  if (!root) return
+  root.innerHTML = `
+    <main style="font-family:system-ui,sans-serif;max-width:960px;margin:0 auto;padding:32px;line-height:1.5">
+      <h1>Uploop Flows Showcase</h1>
+      <p>Flow primitives are loaded. Use the exported demo factories from <code>app.js</code> to mount individual examples.</p>
+    </main>
+  `
+}

@@ -1,67 +1,157 @@
 // ─── Chainable Style Builder ──────────────────────────────────
-// jQuery-inspired fluent API for building styles.
-//
-//   css().bg('primary').text('white').px(4).py(2).rounded('md')
-//   // → { className: '...', css: '...' }
-//
-// The chain tracks pending style declarations, and on toString()
-// or .done(), injects a new CSS class into the global sheet.
+// jQuery-inspired fluent API for building styles and parsing raw CSS.
 
 import { getSheet } from './inject.js'
 import { camelToKebab } from './dynamic.js'
 
 let _uid = 0
 
+function nextClassName() {
+  return `up-css-${++_uid}`
+}
+
+function serializeDecls(decls) {
+  return Object.entries(decls)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join('; ')
+}
+
+function stripComments(text) {
+  return String(text || '').replace(/\/\*[\s\S]*?\*\//g, '').trim()
+}
+
+export function parseCSS(text = '') {
+  const clean = stripComments(text)
+  const graph = {}
+  const json = []
+  const re = /([^{}]+)\{([^{}]*)\}/g
+  let match
+
+  while ((match = re.exec(clean))) {
+    const selector = match[1].trim()
+    const body = match[2].trim()
+    if (!selector) continue
+
+    const decls = {}
+    for (const part of body.split(';')) {
+      const item = part.trim()
+      if (!item) continue
+      const sep = item.indexOf(':')
+      if (sep === -1) continue
+      const key = item.slice(0, sep).trim()
+      const value = item.slice(sep + 1).trim()
+      if (key) decls[key] = value
+    }
+
+    graph[selector] = decls
+    json.push({ selector, css: serializeDecls(decls) })
+  }
+
+  const normalizedText = json
+    .map(rule => `${rule.selector} { ${rule.css} }`)
+    .join('\n')
+
+  return { graph, json, text: normalizedText }
+}
+
+function joinTemplate(strings, values) {
+  let out = ''
+  for (let i = 0; i < strings.length; i++) {
+    out += strings[i]
+    if (i < values.length) out += values[i]
+  }
+  return out
+}
+
 /**
- * Start a chainable style builder.
- *
- * @param {CSSStyleSheet} [sheet] - Target sheet (default: global)
- * @returns {ChainBuilder}
- *
- * @example
- * const btn = css().bg('primary').text('white').px(4).py(2).rounded('md')
- * element.className = btn.className
+ * Start a chainable style builder, or parse a CSS tagged template.
  */
-export function css(sheet) {
-  return new ChainBuilder(sheet)
+export function css(first, ...values) {
+  if (Array.isArray(first) && 'raw' in first) {
+    return parseCSS(joinTemplate(first, values))
+  }
+  return new ChainBuilder(first)
 }
 
 class ChainBuilder {
   #decls = {}
   #sheet
+  #selector = null
+  #apply = []
+  _result = null
 
-  constructor(sheet) {
+  constructor(sheet, decls, selector, applyRefs) {
     this.#sheet = sheet || getSheet()
+    this.#decls = { ...(decls || {}) }
+    this.#selector = selector || null
+    this.#apply = [...(applyRefs || [])]
   }
 
-  /**
-   * Set any CSS property by kebab-case or camelCase name.
-   * @param {string} prop
-   * @param {string|number} value
-   * @returns {ChainBuilder}
-   */
+  get decls() {
+    return { ...this.#decls }
+  }
+
   prop(prop, value) {
-    const key = camelToKebab(prop)
-    this.#decls[key] = value
+    this.#decls[camelToKebab(prop)] = value
+    this._result = null
     return this
   }
 
-  /**
-   * Build and inject the CSS class.
-   * Called automatically by toString(), but can be called explicitly.
-   * @returns {{ className: string, css: string }}
-   */
+  props(obj) {
+    if (!obj || typeof obj !== 'object') return this
+    for (const [key, value] of Object.entries(obj)) {
+      this.prop(key, value)
+    }
+    return this
+  }
+
+  merge(other) {
+    if (!other) return this
+    const decls = other instanceof ChainBuilder ? other.decls : other
+    if (decls && typeof decls === 'object') this.props(decls)
+    return this
+  }
+
+  clone() {
+    return new ChainBuilder(this.#sheet, this.#decls, this.#selector, this.#apply)
+  }
+
+  select(selector) {
+    this.#selector = String(selector || '').replace(/^\./, '')
+    this._result = null
+    return this
+  }
+
+  apply(...classNames) {
+    this.#apply.push(...classNames.filter(Boolean))
+    return this
+  }
+
+  inline() {
+    return serializeDecls(this.#decls)
+  }
+
+  when(_variant, fn) {
+    if (typeof fn === 'function') {
+      const branch = this.clone()
+      fn(branch)
+    }
+    return this
+  }
+
+  export() {
+    const className = this.#selector || nextClassName()
+    return { className, css: this.inline(), apply: [...this.#apply] }
+  }
+
   done() {
     if (this._result) return this._result
-    const className = `up-css-${++_uid}`
-    const css = Object.entries(this.#decls)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join('; ')
-    if (this.#sheet) {
-      try { this.#sheet.insertRule(`.${className} { ${css} }`) } catch (e) {}
+    const result = this.export()
+    if (this.#sheet && result.css) {
+      try { this.#sheet.insertRule(`.${result.className} { ${result.css} }`) } catch (e) {}
     }
-    this._result = { className, css }
-    return this._result
+    this._result = result
+    return result
   }
 
   toString() {
@@ -73,66 +163,43 @@ class ChainBuilder {
   }
 }
 
-// ─── Convenience chain methods ────────────────────────────────
-// Dynamic property setters via Proxy for arbitrary CSS props.
+const shorthands = {
+  m: (target, args) => target.prop('margin', ...args),
+  mt: (target, args) => target.prop('margin-top', ...args),
+  mr: (target, args) => target.prop('margin-right', ...args),
+  mb: (target, args) => target.prop('margin-bottom', ...args),
+  ml: (target, args) => target.prop('margin-left', ...args),
+  mx: (target, args) => { target.prop('margin-left', ...args); target.prop('margin-right', ...args) },
+  my: (target, args) => { target.prop('margin-top', ...args); target.prop('margin-bottom', ...args) },
+  p: (target, args) => target.prop('padding', ...args),
+  pt: (target, args) => target.prop('padding-top', ...args),
+  pr: (target, args) => target.prop('padding-right', ...args),
+  pb: (target, args) => target.prop('padding-bottom', ...args),
+  pl: (target, args) => target.prop('padding-left', ...args),
+  px: (target, args) => { target.prop('padding-left', ...args); target.prop('padding-right', ...args) },
+  py: (target, args) => { target.prop('padding-top', ...args); target.prop('padding-bottom', ...args) },
+  bg: (target, args) => target.prop('background-color', ...args),
+  text: (target, args) => target.prop('color', ...args),
+  rounded: (target, args) => target.prop('border-radius', ...args),
+}
 
-/** @type {ProxyHandler<ChainBuilder>} */
 const chainProxyHandler = {
   get(target, prop, receiver) {
-    // If it's a real method, return it
     if (prop in target || typeof prop === 'symbol') {
-      const val = Reflect.get(target, prop, receiver)
-      return typeof val === 'function' ? val.bind(target) : val
+      const value = Reflect.get(target, prop, receiver)
+      return typeof value === 'function' ? value.bind(target) : value
     }
-    // Otherwise, treat as CSS property shorthand
-    // css().color('red') → css().prop('color', 'red')
-    // css().bg('primary') → css().prop('background-color', ...)
-    // css().px(4) → css().prop('padding-left', ...) + css().prop('padding-right', ...)
+
     return (...args) => {
-      if (args.length === 0) return target
+      if (args.length === 0) return receiver
       const name = String(prop)
-
-      // Shorthand expansions
-      const shorthands = {
-        m:  () => target.prop('margin', ...args),
-        mt: () => target.prop('margin-top', ...args),
-        mr: () => target.prop('margin-right', ...args),
-        mb: () => target.prop('margin-bottom', ...args),
-        ml: () => target.prop('margin-left', ...args),
-        mx: () => { target.prop('margin-left', ...args); target.prop('margin-right', ...args) },
-        my: () => { target.prop('margin-top', ...args); target.prop('margin-bottom', ...args) },
-        p:  () => target.prop('padding', ...args),
-        pt: () => target.prop('padding-top', ...args),
-        pr: () => target.prop('padding-right', ...args),
-        pb: () => target.prop('padding-bottom', ...args),
-        pl: () => target.prop('padding-left', ...args),
-        px: () => { target.prop('padding-left', ...args); target.prop('padding-right', ...args) },
-        py: () => { target.prop('padding-top', ...args); target.prop('padding-bottom', ...args) },
-        bg: () => target.prop('background-color', ...args),
-        text: () => target.prop('color', ...args),
-        rounded: () => target.prop('border-radius', ...args),
-      }
-
-      if (shorthands[name]) {
-        shorthands[name]()
-      } else {
-        target.prop(name, ...args)
-      }
-      return target
+      if (shorthands[name]) shorthands[name](target, args)
+      else target.prop(name, ...args)
+      return receiver
     }
   }
 }
 
-/**
- * Create a proxy-wrapped chain builder that supports arbitrary
- * method calls as CSS property setters.
- *
- * @param {CSSStyleSheet} [sheet]
- * @returns {ChainBuilder & Proxy}
- *
- * @example
- *   css2().bg('red').fontSize('2rem').rounded('0.5rem').toString()
- */
 export function css2(sheet) {
   return new Proxy(new ChainBuilder(sheet), chainProxyHandler)
 }

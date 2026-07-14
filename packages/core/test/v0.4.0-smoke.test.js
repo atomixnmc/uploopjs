@@ -127,10 +127,14 @@ describe('v0.4.0 — Template Parts', () => {
     expect(result.parts.find(p => p.type === 'bool')).toBeTruthy()
   })
 
-  it('template string does NOT contain markers (backward compat)', () => {
+  it('template string includes text markers for GDOM surgery (v0.9)', () => {
     const result = html`<div>Count: ${42}</div>`
-    expect(result.template).not.toContain('<!--up:')
-    expect(result.template).toContain('Count: 42')
+    // v0.9: text values are wrapped in <!-- up:id --> markers for surgical DOM updates
+    expect(result.template).toContain('<!-- up:')
+    expect(result.template).toContain('42')
+    expect(result.template).toContain('<!-- /up:')
+    // Markers wrap the value; 'Count: ' prefix is preserved before the open marker
+    expect(result.template).toContain('Count: ')
   })
 
   it('parts values() getter returns value map', () => {
@@ -148,14 +152,20 @@ describe('v0.4.0 — Patch Execution', () => {
     expect(exec.patch).toBeDefined()
   })
 
-  it('createRunner computes delta and updates DOM', () => {
+  it('createRunner computes delta and updates DOM via GDOM surgery', () => {
     const exec = createDOMExecution()
     const runner = createRunner(exec)
     const oldOutput = html`<input .value=${'old'} />`
     const newOutput = html`<input .value=${'new'} />`
     const target = document.createElement('div')
     runner.mount(target, oldOutput, {})
+    // First update after mount uses replace to populate markers
     runner.update(newOutput, {})
+    expect(target.innerHTML).toContain('data-up-prop')
+    // Second update: GDOM surgery patches only changed nodes
+    const patchOutput = html`<input .value=${'patched'} />`
+    runner.update(patchOutput, {})
+    // Markers still present after patch (DOM nodes survive)
     expect(target.innerHTML).toContain('data-up-prop')
     runner.unmount()
   })

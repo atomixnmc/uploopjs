@@ -168,7 +168,7 @@ function parseAttrs(attrStr) {
  * looks up the component registry, and replaces with rendered output.
  * Returns the string with all known component tags resolved.
  */
-function resolvePascalTags(str) {
+export function resolvePascalTags(str) {
   let result = ''
   let i = 0
   const len = str.length
@@ -248,7 +248,30 @@ function resolvePascalTags(str) {
 /**
  * Resolve a template value to a string, merging nested template bindings.
  */
-function resolveValue(value, bindings, idOffset) {
+function isLoopValue(value) {
+  return !!(value && typeof value === 'object' && value.__uploopLoop === true)
+}
+
+function resolveValue(value, bindings, idOffset, graphParts) {
+  if (isLoopValue(value)) {
+    const id = 'b' + (++idOffset.count)
+    const entries = value.entries || []
+    if (graphParts) {
+      graphParts.push({
+        id,
+        type: 'loop',
+        keyed: value.keyed,
+        keys: value.keys || [],
+        length: entries.length
+      })
+    }
+
+    let html = ''
+    for (const entry of entries) {
+      html += resolveValue(entry.view, bindings, idOffset, graphParts)
+    }
+    return html
+  }
   if (value && typeof value === 'object' && 'template' in value && 'bindings' in value) {
     // Nested template descriptor — relabel its binding IDs to avoid collisions
     const nestedBindings = value.bindings || []
@@ -287,7 +310,7 @@ function resolveValue(value, bindings, idOffset) {
     let str = ''
     for (const v of value) {
       if (v && typeof v === 'object' && 'template' in v && 'bindings' in v) {
-        str += resolveValue(v, bindings, idOffset)
+        str += resolveValue(v, bindings, idOffset, graphParts)
       } else {
         str += v === null || v === undefined ? '' : String(v)
       }
@@ -311,6 +334,7 @@ export function html(strings, ...values) {
 
   // Metadata describing each dynamic position for incremental patching
   const parts = []
+  const graphParts = []
 
   for (let i = 0; i < strings.length; i++) {
     let str = strings[i]
@@ -326,6 +350,7 @@ export function html(strings, ...values) {
         // Resolve PascalCase tags in the prefix (before the binding marker)
         fragments.push(resolvePascalTags(binding.prefix) + binding.marker + binding.name + ':' + id + '"')
         parts.push({ id, type: binding.type, name: binding.name, value })
+        graphParts.push({ id, type: binding.type, name: binding.name, value })
         continue
       }
 
@@ -354,31 +379,38 @@ export function html(strings, ...values) {
         }
       }
 
-      // 3. Handle the value — text interpolation or nested template merge
-      if (value && typeof value === 'object' && 'template' in value && 'bindings' in value) {
+      // 3. Handle the value — text interpolation, loop, or nested template merge
+      if (isLoopValue(value)) {
+        const strVal = resolveValue(value, bindings, idOffset, graphParts)
+        fragments.push(str + strVal)
+      } else if (value && typeof value === 'object' && 'template' in value && 'bindings' in value) {
         // Nested template descriptor — merge bindings, inline HTML.
         // The nested template's own parts live in its descriptor,
         // and its markers are already embedded in the returned HTML.
-        const strVal = resolveValue(value, bindings, idOffset)
+        const strVal = resolveValue(value, bindings, idOffset, graphParts)
         fragments.push(str + strVal)
       } else if (Array.isArray(value)) {
         // Array — handle each element individually
         let html = str
         for (const v of value) {
-          if (v && typeof v === 'object' && 'template' in v && 'bindings' in v) {
-            html += resolveValue(v, bindings, idOffset)
+          if (isLoopValue(v)) {
+            html += resolveValue(v, bindings, idOffset, graphParts)
+          } else if (v && typeof v === 'object' && 'template' in v && 'bindings' in v) {
+            html += resolveValue(v, bindings, idOffset, graphParts)
           } else {
             const id = 'b' + (++idOffset.count)
-            html += String(v ?? '')
+            html += '<!-- up:' + id + ' -->' + String(v ?? '') + '<!-- /up:' + id + ' -->'
             parts.push({ id, type: 'text', value: v })
+            graphParts.push({ id, type: 'text', value: v })
           }
         }
         fragments.push(html)
       } else {
-        // Plain scalar — record value for patch diffing
+        // Plain scalar — record value for patch diffing, wrap in markers
         const id = 'b' + (++idOffset.count)
-        fragments.push(str + String(value ?? ''))
+        fragments.push(str + '<!-- up:' + id + ' -->' + String(value ?? '') + '<!-- /up:' + id + ' -->')
         parts.push({ id, type: 'text', value })
+        graphParts.push({ id, type: 'text', value })
       }
     } else {
       // Final string part (after all values) — just resolve PascalCase tags
@@ -392,6 +424,13 @@ export function html(strings, ...values) {
     template,
     bindings,
     parts,
+    graphParts,
+    graphTemplate: {
+      kind: 'uploop.html.graph-template',
+      strategy: 'compat-scaffold',
+      parts: graphParts
+    },
+    graphValues: values,
     values: () => {
       const result = {}
       for (const p of parts) {
@@ -405,6 +444,9 @@ export function html(strings, ...values) {
     toJSON: () => template
   }
 }
+
+/** @type {WeakMap<Element, Map<string, EventListener>>} */
+const _eventBindingState = new WeakMap()
 
 /**
  * Apply event bindings to mounted DOM by finding data-up-event markers.
@@ -422,16 +464,29 @@ export function applyBindings(root, bindings, send, state) {
         target.removeAttribute('data-up-event')
         const useSend = binding._ownerSend || send
 
+        let listener = null
         if (typeof handler === 'function') {
-          target.addEventListener(eventName, handler)
+          listener = handler
         } else if (typeof handler === 'string') {
-          target.addEventListener(eventName, (e) => { if (useSend) useSend(handler, e) })
+          listener = (e) => { if (useSend) useSend(handler, e) }
         } else if (Array.isArray(handler)) {
           const [name, transform] = handler
-          target.addEventListener(eventName, (e) => {
+          listener = (e) => {
             const payload = transform ? transform(e) : e
             if (useSend) useSend(name, payload)
-          })
+          }
+        }
+
+        if (listener) {
+          let listeners = _eventBindingState.get(target)
+          if (!listeners) {
+            listeners = new Map()
+            _eventBindingState.set(target, listeners)
+          }
+          const prev = listeners.get(eventName)
+          if (prev) target.removeEventListener(eventName, prev)
+          target.addEventListener(eventName, listener)
+          listeners.set(eventName, listener)
         }
       }
     }
@@ -492,32 +547,60 @@ export function patchTemplate(root, oldResult, newResult) {
   const oldParts = oldResult.parts || []
   const newParts = newResult.parts || []
 
-  // Build a map of old values by ID
-  const oldValues = {}
+  // Build a map of old values + detect structural changes
+  const oldById = {}
   for (const p of oldParts) {
-    if (p.type === 'text') oldValues[p.id] = p.value
-    else if (p.type === 'prop' || p.type === 'bool') oldValues[p.id] = p.value
+    oldById[p.id] = { value: p.value, type: p.type, name: p.name }
   }
 
-  // Update only changed parts
+  const mutations = []
+
   for (const p of newParts) {
-    const oldVal = oldValues[p.id]
+    const old = oldById[p.id]
+    if (!old) {
+      // New part added — will be patched via replace on first mismatch
+      continue
+    }
     const newVal = p.value
+    const oldVal = old.value
 
     if (p.type === 'text' && oldVal !== newVal) {
-      // No markers in template — text patches need DOM tree walking.
-      // For now, text-only changes use replace strategy. Prop/bool are patched.
+      // Resolve both marker comments and update text between them
+      const open = findMarker(root, p.id)
+      if (open) {
+        // Collect all text nodes between open marker and its close marker
+        const close = findMarker(root, '/' + p.id)
+        if (close) {
+          let node = open.nextSibling
+          while (node && node !== close) {
+            if (node.nodeType === 3) { // TEXT_NODE
+              mutations.push({ node, value: String(newVal ?? '') })
+            }
+            node = node.nextSibling
+          }
+        }
+      }
+      // If no marker found, fall back to full replace (first render or non-marked template)
     } else if (p.type === 'prop' && oldVal !== newVal) {
       const el = root.querySelector('[data-up-prop="' + p.name + ':' + p.id + '"]')
-      if (el) el[p.name] = newVal
+      if (el) mutations.push({ el, name: p.name, value: newVal, type: 'prop' })
     } else if (p.type === 'bool' && oldVal !== newVal) {
       const el = root.querySelector('[data-up-bool="' + p.name + ':' + p.id + '"]')
-      if (el) {
-        if (newVal) el.setAttribute(p.name, '')
-        else el.removeAttribute(p.name)
-      }
+      if (el) mutations.push({ el, name: p.name, value: newVal, type: 'bool' })
     }
     // Event bindings don't need patching — listeners survive on DOM nodes
+  }
+
+  // Apply all mutations in a single synchronous batch to avoid layout thrashing
+  for (const m of mutations) {
+    if (m.type === 'text' || m.node) {
+      m.node.nodeValue = m.value
+    } else if (m.type === 'prop') {
+      m.el[m.name] = m.value
+    } else if (m.type === 'bool') {
+      if (m.value) m.el.setAttribute(m.name, '')
+      else m.el.removeAttribute(m.name)
+    }
   }
 }
 

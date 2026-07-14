@@ -142,6 +142,17 @@
 | E1-E4 | Execution breakthrough | Template diffing, DOM patch strategy |
 | - | `temperature` + `lifetime` data tiers | Heuristic-driven scheduling |
 
+
+## v0.10.0 — HTML Graph Renderer (Planned)
+
+| # | Feature | Impact |
+|---|---|---|
+| HG1 | `loop(items, keyFn?, viewFn)` list primitive | Unified Uploop naming, keyed list metadata |
+| HG2 | Graph template IR beside current string descriptor | Non-breaking path toward precise DOM patching |
+| HG3 | Direct DOM anchors for text/attr/event/component/list nodes | O(changed-nodes) render work |
+| HG4 | HyperGraph state-read edges to render nodes | Schedule only affected DOM surgery |
+
+> See [Plan_uploop-html-graph-renderer-v0.10.md](./plan/Plan_uploop-html-graph-renderer-v0.10.md).
 ---
 
 ## Key Design Decisions

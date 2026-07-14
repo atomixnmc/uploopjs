@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const BASE = "http://localhost:3000";
+const BASE = "http://127.0.0.1:3100";
 
 test.describe("Store demo", () => {
   test("adds item to cart", async ({ page }) => {

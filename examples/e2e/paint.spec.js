@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const BASE = 'http://localhost:3000'
+const BASE = 'http://127.0.0.1:3100'
 
 test.describe('paint', () => {
   test('loads paint canvas', async ({ page }) => {
@@ -34,6 +34,29 @@ test.describe('paint', () => {
     await expect(sizeSlider).toBeVisible({ timeout: 3000 })
     await expect(sizeSlider).toHaveAttribute('min', '2')
     await expect(sizeSlider).toHaveAttribute('max', '30')
+  })
+
+  test('brush size slider preserves DOM node while adjusting', async ({ page }) => {
+    await page.goto(`${BASE}/?tab=paint`)
+    await page.waitForTimeout(1000)
+
+    const sizeSlider = page.locator('#demo-slot input[type="range"]')
+    await expect(sizeSlider).toBeVisible({ timeout: 3000 })
+    await sizeSlider.evaluate(el => { el.__uploopProbe = 'stable-slider' })
+
+    await sizeSlider.evaluate(el => {
+      el.value = '18'
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await expect(page.locator('#demo-slot')).toContainText('18px')
+    expect(await sizeSlider.evaluate(el => el.__uploopProbe)).toBe('stable-slider')
+
+    await sizeSlider.evaluate(el => {
+      el.value = '24'
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await expect(page.locator('#demo-slot')).toContainText('24px')
+    expect(await sizeSlider.evaluate(el => el.__uploopProbe)).toBe('stable-slider')
   })
 
   test('tool buttons are present', async ({ page }) => {

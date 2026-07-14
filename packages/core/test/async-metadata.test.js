@@ -65,6 +65,29 @@ describe('createLoop async metadata (v0.3.0)', () => {
     expect(aborted).toContain('a')
   })
 
+  it('retry preserves original event payload args', async () => {
+    const calls = []
+    const loop = createLoop({
+      state: { results: [] },
+      error: { search: { retry: 1, fallback: { results: [] } } },
+      update: {
+        search: {
+          run: async (s, query) => {
+            calls.push(query)
+            if (calls.length === 1) throw new Error('temporary')
+            return { results: [query.trim()] }
+          }
+        }
+      }
+    })
+
+    loop.send('search', '  alice  ')
+    await new Promise(r => setTimeout(r, 1200))
+
+    expect(calls).toEqual(['  alice  ', '  alice  '])
+    expect(loop.get().results).toEqual(['alice'])
+  })
+
   it('isPending tracks async handler via object form', async () => {
     const loop = createLoop({
       state: { ready: false },

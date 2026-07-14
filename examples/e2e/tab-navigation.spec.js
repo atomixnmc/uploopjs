@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const BASE = "http://localhost:3000";
+const BASE = "http://127.0.0.1:3100";
 
 test.describe("demo gallery tab navigation", () => {
   test("landing page loads", async ({ page }) => {
@@ -51,7 +51,7 @@ test.describe("demo gallery tab navigation", () => {
     await expect(page.locator("#demo-slot")).toBeVisible();
   });
 
-  test("cycle all 19 tabs without errors", async ({ page }) => {
+  test("cycle all 20 tabs without errors", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (err) => errors.push(err));
 
@@ -71,6 +71,7 @@ test.describe("demo gallery tab navigation", () => {
       "🚦 StateMachine",
       "🎨 Anim",
       "⚡ Async",
+      "Loop Graph",
       "🖼 Carousel",
       "🎨 Paint",
       "🎵 Audio",

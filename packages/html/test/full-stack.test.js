@@ -111,6 +111,47 @@ describe('html/component full stack', () => {
     expect(el.innerHTML).toContain('1')
   })
 
+  it('preserves range input identity during input-driven re-render', async () => {
+    let updates = 0
+    const Slider = component('Slider', {
+      state: { value: 0 },
+      update: {
+        set: (s, value) => {
+          updates++
+          return { value }
+        }
+      },
+      view: (s, { send }) => html`
+        <label>
+          <input id="volume" type="range" min="0" max="100" .value=${s.value} @input=${['set', e => Number(e.target.value)]} />
+          <span id="readout">${s.value}</span>
+        </label>
+      `
+    })
+
+    const el = document.createElement('div')
+    Slider.mount(el)
+
+    const first = el.querySelector('#volume')
+    first.value = '42'
+    first.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 0))
+
+    const second = el.querySelector('#volume')
+    expect(second).toBe(first)
+    expect(second.value).toBe('42')
+    expect(el.querySelector('#readout').textContent).toBe('42')
+    expect(updates).toBe(1)
+
+    second.value = '43'
+    second.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(el.querySelector('#volume')).toBe(first)
+    expect(el.querySelector('#readout').textContent).toBe('43')
+    expect(updates).toBe(2)
+  })
+
   it('unmount clears content, remount renders fresh', () => {
     const Comp = component('Remount', {
       state: { text: 'first' },

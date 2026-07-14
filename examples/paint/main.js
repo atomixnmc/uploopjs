@@ -6,15 +6,7 @@ import { html, component } from "@uploop/html";
 // innerHTML destroys it. The persistent resource system handles
 // this via save/restore.
 //
-// Two key design decisions to avoid bugs:
-//
-// 1. Size slider uses `value="${state.size}"` (HTML attribute)
-//    instead of `.value=${state.size}` (property binding).
-//    Reason: innerHTML recreates the input. An HTML attribute
-//    sets the correct position on creation. Property bindings
-//    run after innerHTML, causing the slider to jump.
-//
-// 2. Canvas restore sets the container's CSS background-image
+// Canvas restore sets the container's CSS background-image
 //    to the saved dataUrl SYNCHRONOUSLY, before the async
 //    Image.onload fires. This prevents a white flash between
 //    canvas creation and image decode. On image load, the CSS
@@ -53,17 +45,11 @@ const Paint = component("Paint", {
           @input=${["setColor", (e) => e.target.value]}
           style="width:40px;height:40px;border:none;cursor:pointer;padding:0;"
         />
-        <!--
-          NOTE: value="${state.size}" is an HTML ATTRIBUTE, not a property binding.
-          This ensures the slider starts at the correct position after innerHTML
-          recreation. Property bindings (.value=) run asynchronously and cause
-          the slider to jump when the user is dragging it.
-        -->
         <input
           type="range"
           min="2"
           max="30"
-          value="${state.size}"
+          .value=${state.size}
           @input=${["setSize", (e) => parseInt(e.target.value)]}
           style="width:100px;"
         />

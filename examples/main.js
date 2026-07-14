@@ -24,6 +24,7 @@ import { StoreDemo } from "./store/main.js";
 import { StateMachineDemo } from "./statemachine/main.js";
 import { AnimationDemo } from "./animation/main.js";
 import { AsyncDemo } from "./async-data/main.js";
+import { LoopGraphDemo } from "./loop-graph/main.js";
 
 inject();
 
@@ -47,6 +48,7 @@ const tabGroups = [
       { id: "statemachine", label: "🚦 StateMachine", comp: StateMachineDemo },
       { id: "animation", label: "🎨 Anim", comp: AnimationDemo },
       { id: "async", label: "⚡ Async", comp: AsyncDemo },
+      { id: "loop-graph", label: "Loop Graph", comp: LoopGraphDemo },
     ],
   },
   {
@@ -169,7 +171,7 @@ function Landing({ send }) {
         </div>
       </div>
       <p style="margin-top:2rem;font-size:0.78rem;color:#aaa;">
-        Pure ESM · No build · No JSX · HyperGraph architecture · 19 examples ·
+        Pure ESM · No build · No JSX · HyperGraph architecture · 20 examples ·
         181 tests
       </p>
     </div>

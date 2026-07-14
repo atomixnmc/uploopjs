@@ -1,6 +1,6 @@
 {
   "name": "@uploop/core",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "Uploop core update protocol — pure, no DOM, no browser",
   "type": "module",
   "main": "./src/index.js",

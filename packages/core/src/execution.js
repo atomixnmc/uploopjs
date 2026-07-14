@@ -1,5 +1,5 @@
 /**
- * Execution Protocol — v0.0.3
+ * Execution Protocol — v0.9.0
  *
  * Every render target (DOM, Canvas, SSR, WebGL, Worker) implements
  * this protocol. The runner orchestrates the pipeline; targets handle
@@ -7,34 +7,40 @@
  *
  * ─── Strategy ───────────────────────────────────────────
  *
- *   patch    — surgical update: only changed nodes modified.
- *              Preserves DOM state, focus, canvas, scroll.
- *              Best for: DOM (VDOM diff / signal patch).
+ *   patch    — GDOM surgery: granular DOM updates via marker
+ *              resolution. Only changed nodes are touched.
+ *              Preserves DOM state, focus, canvas, scroll, events.
+ *              Best for: DOM (HyperGraph-driven incremental updates).
  *
  *   replace  — full teardown + rebuild: destroy all output,
  *              recreate from template. Runner handles resource
  *              preservation, focus save/restore, event rebinding.
- *              Best for: SSR strings, canvas redraw.
+ *              Best for: SSR strings, canvas redraw, first mount.
  *
  *   redraw   — discard previous frame, draw new frame.
  *              No diffing. Every frame is a fresh render pass.
  *              Best for: Canvas 2D, WebGL, game loops.
  *
- * ─── Runner Pipeline ─────────────────────────────────────
+ * ─── GDOM Surgery Pipeline (patch strategy) ──────────────
  *
  *   state change
  *       │
  *       ▼
- *   render(template, state) → Output
+ *   render(template, state) → Output (with parts[] metadata)
  *       │
  *       ▼
- *   strategy === 'patch' ?
+ *   computeDelta(prevOutput, nextOutput)
  *       │
- *       ├── YES → patch(target, prevOutput, nextOutput, delta)
+ *       ├── structural: added / removed parts
+ *       └── value: changed text / prop / bool
  *       │
- *       └── NO  → preReplace(target)          // save resources, focus
- *                 replace(target, nextOutput)   // innerHTML, clear+redraw
- *                 postReplace(target)           // restore resources, focus, rebind
+ *       ▼
+ *   patch(target, prevOutput, nextOutput, delta)
+ *       │
+ *       ├── text: resolve <!-- up:id --> markers → update textContent
+ *       ├── prop: resolve [data-up-prop] → set property
+ *       ├── bool: resolve [data-up-bool] → toggle attribute
+ *       └── batch: collect mutations → apply synchronously
  *
  * ─── Lifecycle ───────────────────────────────────────────
  *
@@ -87,17 +93,18 @@
  */
 
 /**
- * Create the default DOM execution target.
+ * Create the default DOM execution target with GDOM surgery.
  *
- * Uses strategy: 'replace' with innerHTML (v0.0.2 behavior).
- * Will be upgraded to strategy: 'patch' in a later step.
+ * Uses strategy: 'patch' with marker-based DOM node resolution.
+ * Prop/bool bindings target elements via data-up-* attributes.
+ * Text bindings target comment markers (<!-- up:id -->).
  *
  * @returns {import('./types.js').ExecutionTarget}
  */
 export function createDOMExecution() {
   /** @type {import('./types.js').ExecutionTarget} */
   return {
-    strategy: 'replace',
+    strategy: 'patch',
 
     render(template, state) {
       if (typeof template === 'string') return template
@@ -110,14 +117,60 @@ export function createDOMExecution() {
     },
 
     patch(target, prevOutput, nextOutput, delta) {
-      // Apply patch instructions from delta
-      if (delta?.parts) {
-        for (const part of delta.parts) {
-          if (part.type === 'text' && part.node) {
-            part.node.textContent = String(part.value ?? '')
-          } else if (part.type === 'prop' && part.node) {
-            part.node[part.name] = part.value
+      if (!delta) return
+      const mutations = []
+
+      // Text patches — resolve via comment markers <!-- up:id -->
+      if (delta.textParts) {
+        for (const part of delta.textParts) {
+          // Try the pre-resolved node (fast path from computeDelta)
+          if (part.node) {
+            mutations.push({ node: part.node, value: String(part.value ?? '') })
+          } else {
+            // Walk DOM to find marker comment
+            const open = _findMarker(target, part.id)
+            if (open) {
+              const close = _findMarker(target, '/' + part.id)
+              let node = open.nextSibling
+              while (node && node !== close) {
+                if (node.nodeType === 3) { // TEXT_NODE
+                  mutations.push({ node, value: String(part.value ?? '') })
+                }
+                node = node.nextSibling
+              }
+            }
           }
+        }
+      }
+
+      // Prop patches — resolve via [data-up-prop="name:id"]
+      if (delta.propParts) {
+        for (const part of delta.propParts) {
+          const el = part.el || target.querySelector('[data-up-prop="' + part.name + ':' + part.id + '"]')
+          if (el) mutations.push({ el, name: part.name, value: part.value, type: 'prop' })
+        }
+      }
+
+      // Bool patches — resolve via [data-up-bool="name:id"]
+      if (delta.boolParts) {
+        for (const part of delta.boolParts) {
+          const el = part.el || target.querySelector('[data-up-bool="' + part.name + ':' + part.id + '"]')
+          if (el) mutations.push({ el, name: part.name, value: part.value, type: 'bool' })
+        }
+      }
+
+      // New parts (first render after id didn't exist) — skip, handled by full render
+      // Removed parts — skip, old DOM nodes will be cleaned on next replace cycle
+
+      // Apply all mutations together to avoid layout thrashing
+      for (const m of mutations) {
+        if (m.type === 'text' || ('node' in m && m.node)) {
+          m.node.nodeValue = m.value
+        } else if (m.type === 'prop') {
+          m.el[m.name] = m.value
+        } else if (m.type === 'bool') {
+          if (m.value) m.el.setAttribute(m.name, '')
+          else m.el.removeAttribute(m.name)
         }
       }
     },
@@ -174,6 +227,28 @@ export function createDOMExecution() {
       }
     }
   }
+}
+
+/**
+ * Find a comment node marker in the DOM.
+ * Searches for <!-- up:id --> or <!-- /up:id --> patterns.
+ *
+ * @param {Element} root
+ * @param {string} id
+ * @returns {Comment|null}
+ */
+function _findMarker(root, id) {
+  const doc = root.ownerDocument || (typeof document !== 'undefined' ? document : null)
+  if (!doc) return null
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_COMMENT)
+  const target = 'up:' + id
+  let node
+  while ((node = walker.nextNode())) {
+    /** @type {Comment} */
+    const comment = node
+    if (comment.data && comment.data.trim() === target) return comment
+  }
+  return null
 }
 
 /**
@@ -259,15 +334,93 @@ export function validateExecutionTarget(target, label = 'execution target') {
  * @returns {Object} runner
  */
 /**
- * Compute delta between previous and next template outputs.
- * Compares parts by ID to find changed text/prop/bool values.
+ * Compute structured delta between previous and next template outputs.
+ * Categorizes changes by type for targeted GDOM surgery:
+ *
+ *   textParts — text binding value changes (IDs match, values differ)
+ *   propParts — property binding value changes
+ *   boolParts — boolean attribute toggle changes
+ *   addedParts — new parts not in previous output (first render, structural change)
+ *   removedParts — old parts gone from next output (structural change)
+ *
+ * Returns null if no parts metadata is available (string-only output).
+ * Returns an object with empty arrays if no changes detected.
  *
  * @param {Object|string} prevOutput
  * @param {Object|string} nextOutput
- * @returns {Object|null} delta { parts: [...] } or null if no changes
+ * @returns {Object|null} structured delta or null
  */
-function computeDelta(prevOutput, nextOutput) {
-  // If outputs are template results with parts, diff the parts
+export function computeDelta(prevOutput, nextOutput) {
+  const prevParts = prevOutput?.parts || []
+  const nextParts = nextOutput?.parts || []
+
+  // String-only outputs have no parts — delta is meaningless
+  if (prevParts.length === 0 && nextParts.length === 0) return null
+
+  const textParts = []
+  const propParts = []
+  const boolParts = []
+  const addedParts = []
+  const removedParts = []
+
+  // Index previous parts by ID for O(1) lookup
+  const prevById = {}
+  for (const p of prevParts) {
+    prevById[p.id] = p
+  }
+
+  // Index next parts for added detection
+  const nextById = {}
+  for (const p of nextParts) {
+    nextById[p.id] = true
+  }
+
+  // Detect added + changed parts
+  for (const p of nextParts) {
+    const prev = prevById[p.id]
+    if (!prev) {
+      addedParts.push(p)
+      continue
+    }
+
+    const prevVal = prev.value
+    const nextVal = p.value
+
+    if (prevVal !== nextVal) {
+      if (p.type === 'text') {
+        textParts.push({ id: p.id, type: 'text', value: nextVal })
+      } else if (p.type === 'prop') {
+        propParts.push({ id: p.id, type: 'prop', name: p.name, value: nextVal })
+      } else if (p.type === 'bool') {
+        boolParts.push({ id: p.id, type: 'bool', name: p.name, value: nextVal })
+      }
+    }
+  }
+
+  // Detect removed parts
+  for (const p of prevParts) {
+    if (!nextById[p.id]) {
+      removedParts.push(p)
+    }
+  }
+
+  const hasChanges = textParts.length > 0 || propParts.length > 0 || boolParts.length > 0
+
+  return {
+    textParts,
+    propParts,
+    boolParts,
+    addedParts,
+    removedParts,
+    hasChanges
+  }
+}
+
+/**
+ * @private — kept for backward compat with old callers
+ * @deprecated Use computeDelta() which returns structured output
+ */
+function _computeDeltaLegacy(prevOutput, nextOutput) {
   const prevParts = prevOutput?.parts || []
   const nextParts = nextOutput?.parts || []
   const changed = []
@@ -291,15 +444,19 @@ function computeDelta(prevOutput, nextOutput) {
 export function createRunner(execution, options = {}) {
   let _prevOutput = null
   let _target = null
+  let _isFirstUpdate = true
 
   function mount(target, template, state) {
     _target = target
+    _isFirstUpdate = true
+    // First mount always uses replace for initial DOM population
     _prevOutput = execution.render(template, state)
     const unmount = execution.mount(target, _prevOutput)
     return () => {
       unmount?.()
       _target = null
       _prevOutput = null
+      _isFirstUpdate = true
     }
   }
 
@@ -310,10 +467,26 @@ export function createRunner(execution, options = {}) {
 
     if (options.onRender) options.onRender(_target, nextOutput)
 
+    // First update after mount: use replace for full DOM population
+    // (comment markers need to be in the DOM before patch can resolve them)
+    if (_isFirstUpdate) {
+      _isFirstUpdate = false
+      const snapshot = execution.hooks?.preReplace?.(_target)
+      if (execution.replace) {
+        execution.replace(_target, nextOutput)
+      }
+      if (execution.hooks?.postReplace) {
+        execution.hooks.postReplace(_target, snapshot)
+      }
+      if (options.onReplace) options.onReplace(_target, nextOutput)
+      _prevOutput = nextOutput
+      return
+    }
+
+    // Subsequent updates: use patch strategy for GDOM surgery
     if (execution.strategy === 'patch' && execution.patch) {
-      // Compute delta from old and new template outputs
       const delta = computeDelta(_prevOutput, nextOutput)
-      if (delta) {
+      if (delta?.hasChanges) {
         execution.patch(_target, _prevOutput, nextOutput, delta)
       }
       if (options.onPatch) options.onPatch(_target, delta)
@@ -336,6 +509,7 @@ export function createRunner(execution, options = {}) {
       execution.unmount(_target)
       _target = null
       _prevOutput = null
+      _isFirstUpdate = true
     }
   }
 

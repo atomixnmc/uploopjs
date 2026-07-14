@@ -217,6 +217,6 @@ const loop = createLoop({
 
 ## Docs
 
-- [EXAMPLES.md](./EXAMPLES.md) — detailed breakdown of all 19 examples
+- [EXAMPLES.md](./EXAMPLES.md) — detailed breakdown of all 20 examples
 - [PLAN.md](./PLAN.md) — roadmap and key design decisions
 - [TODO.md](./TODO.md) — task tracker with completion status

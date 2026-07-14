@@ -442,6 +442,7 @@ export const AnimationDemo = component("AnimationDemo", {
 
     function applyTab() {
       const s = ctx.get();
+      console.log("[anim applyTab]", s.tab, "loop", !!ctx.loop);
       if (s.tab === lastTab) return;
       lastTab = s.tab;
       if (unmountFn) {
@@ -465,12 +466,19 @@ export const AnimationDemo = component("AnimationDemo", {
     }
 
     applyTab();
+    const unsub = ctx.loop?.subscribe(() => applyTab());
+    const onTabClick = (e) => {
+      if (e.target.closest("button")) setTimeout(() => applyTab(), 0);
+    };
+    el.addEventListener("click", onTabClick);
     const observer = new MutationObserver(() => {
-      lastTab = null; // force re-mount since container was recreated
+      lastTab = null; // fallback for external container replacement
       applyTab();
     });
     observer.observe(el, { childList: true, subtree: false });
     return () => {
+      unsub?.();
+      el.removeEventListener("click", onTabClick);
       observer.disconnect();
       if (unmountFn) unmountFn();
     };

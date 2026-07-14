@@ -55,7 +55,7 @@ export {
 } from './dynamic.js'
 
 // Chainable style builder
-export { css } from './chain.js'
+export { css, css2, parseCSS } from './chain.js'
 
 // Color utilities
 export {

@@ -9,7 +9,7 @@
 import { component as coreComponent, createComponentType as coreCreateComponentType } from '@uploop/core'
 import { html, applyBindings, componentTag, processUploopAttributes, processVirtualContainers, consumeContext, resolveScope } from './html.js'
 import { createDOMExecution } from '@uploop/core'
-import { createDOMPatchExecution } from './dom-execution.js'
+import { createDOMPatchExecution, morphHTML } from './dom-execution.js'
 
 /**
  * Create a DOM execution target wired with component-specific context.
@@ -57,7 +57,7 @@ function createWiredDOMExecution(loop, resources, options = {}) {
   return {
     strategy: base.strategy,
     render: base.render,
-    replace: base.replace,
+    replace: morphHTML,
     patch: base.patch,
     mount: base.mount,
     unmount: base.unmount,
@@ -157,39 +157,20 @@ export function component(name, config = {}, lifecycleMethods = {}) {
     // Rewire mount/unmount to use wrapper's resources.register
     // (core has its own _resources; preReplace/postReplace use wrapper's)
     mount: config.mount
-      ? (el, ctx) => config.mount(el, { ...ctx, registerResource: (n, h) => resources.register(n, h) })
+      ? (el, ctx) => config.mount(el, { ...ctx, registerResource: (n, h) => resources._map.set(n, h) })
       : undefined,
     unmount: config.unmount
-      ? (el, ctx) => config.unmount(el, { ...ctx, registerResource: (n, h) => resources.register(n, h) })
+      ? (el, ctx) => config.unmount(el, { ...ctx, registerResource: (n, h) => resources._map.set(n, h) })
       : undefined
   }
 
   const desc = coreComponent(name, wrappedConfig, lifecycleMethods)
 
-  // Override instance mount to wire resources through wrapper's registry
   const _origCreate = desc.create
   desc.create = function(props, ...children) {
-    const inst = _origCreate.call(this, props, ...children)
-    if (inst && inst.mount) {
-      const _origMount = inst.mount
-      inst.mount = function(el) {
-        // Call mount hook FIRST so user resource registrations take priority
-        // over auto-registration from processUploopAttributes
-        if (config.mount) {
-          config.mount(el, {
-            send: inst.loop.send,
-            get: inst.loop.get,
-            registerResource: (name, handlers) => resources.register(name, handlers)
-          })
-        }
-        const result = _origMount.call(this, el)
-        return result
-      }
-    }
-    return inst
+    return _origCreate.call(this, props, ...children)
   }
-
-  desc._originalView = origView
+desc._originalView = origView
   desc._html = componentTag(config.classes || {})
   return desc
 }

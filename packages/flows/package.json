@@ -1,6 +1,6 @@
 {
   "name": "@uploop/flows",
-  "version": "0.3.0",
+  "version": "0.9.0",
     "description": "Uploop flows — 74 profiles, 12 algorithms, advanced execution engine (workers, scheduling, lanes)",
   "type": "module",
   "main": "./src/index.js",

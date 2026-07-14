@@ -13,6 +13,130 @@
 import { createDOMExecution } from '@uploop/core'
 import { applyBindings, processUploopAttributes, processVirtualContainers } from './html.js'
 
+function nodeCtor(node) {
+  return node?.ownerDocument?.defaultView?.Node || globalThis.Node
+}
+
+function canMorph(from, to) {
+  if (!from || !to) return false
+  if (from.nodeType !== to.nodeType) return false
+  const NodeRef = nodeCtor(from)
+  if (from.nodeType === NodeRef.ELEMENT_NODE) return from.tagName === to.tagName
+  return true
+}
+
+function syncAttributes(from, to) {
+  for (const attr of Array.from(from.attributes)) {
+    if (!to.hasAttribute(attr.name)) from.removeAttribute(attr.name)
+  }
+  for (const attr of Array.from(to.attributes)) {
+    if (from.getAttribute(attr.name) !== attr.value) from.setAttribute(attr.name, attr.value)
+  }
+}
+
+
+function isWhitespaceOnly(node) {
+  const NodeRef = nodeCtor(node)
+  for (const child of Array.from(node.childNodes || [])) {
+    if (child.nodeType === NodeRef.TEXT_NODE && child.nodeValue.trim() === '') continue
+    if (child.nodeType === NodeRef.COMMENT_NODE) continue
+    return false
+  }
+  return true
+}
+function syncFormState(from, to) {
+  const tag = from.tagName
+  if (tag === 'INPUT') {
+    const type = (from.type || '').toLowerCase()
+    if (type === 'checkbox' || type === 'radio') {
+      from.checked = to.checked
+    } else if (from !== from.ownerDocument.activeElement) {
+      from.value = to.value
+    }
+  } else if (tag === 'TEXTAREA') {
+    if (from !== from.ownerDocument.activeElement) from.value = to.value
+  } else if (tag === 'SELECT') {
+    from.value = to.value
+  }
+}
+
+function morphNode(from, to) {
+  if (!canMorph(from, to)) {
+    from.replaceWith(to.cloneNode(true))
+    return
+  }
+
+  const NodeRef = nodeCtor(from)
+  if (from.nodeType === NodeRef.TEXT_NODE || from.nodeType === NodeRef.COMMENT_NODE) {
+    if (from.nodeValue !== to.nodeValue) from.nodeValue = to.nodeValue
+    return
+  }
+
+  if (from.nodeType !== NodeRef.ELEMENT_NODE) return
+
+  syncAttributes(from, to)
+  syncFormState(from, to)
+
+  if (to.hasAttribute?.('register-resource') && isWhitespaceOnly(to)) return
+
+  let oldChild = from.firstChild
+  let newChild = to.firstChild
+
+  while (oldChild || newChild) {
+    if (!oldChild && newChild) {
+      targetAppendClone(from, newChild)
+      newChild = newChild.nextSibling
+      continue
+    }
+
+    if (oldChild && !newChild) {
+      const nextOld = oldChild.nextSibling
+      oldChild.remove()
+      oldChild = nextOld
+      continue
+    }
+
+    const nextOld = oldChild.nextSibling
+    const nextNew = newChild.nextSibling
+    morphNode(oldChild, newChild)
+    oldChild = nextOld
+    newChild = nextNew
+  }
+}
+
+function targetAppendClone(parent, child) {
+  parent.appendChild(child.cloneNode(true))
+}
+
+export function morphHTML(target, html) {
+  const template = target.ownerDocument.createElement('template')
+  template.innerHTML = String(html ?? '')
+
+  let oldChild = target.firstChild
+  let newChild = template.content.firstChild
+
+  while (oldChild || newChild) {
+    if (!oldChild && newChild) {
+      targetAppendClone(target, newChild)
+      newChild = newChild.nextSibling
+      continue
+    }
+
+    if (oldChild && !newChild) {
+      const nextOld = oldChild.nextSibling
+      oldChild.remove()
+      oldChild = nextOld
+      continue
+    }
+
+    const nextOld = oldChild.nextSibling
+    const nextNew = newChild.nextSibling
+    morphNode(oldChild, newChild)
+    oldChild = nextOld
+    newChild = nextNew
+  }
+}
+
 /**
  * Find a comment node within root whose textContent matches the
  * given marker id: `<!-- up:${id} -->`.
@@ -52,7 +176,7 @@ export function createDOMExecutionFull(domCtx) {
   return {
     strategy: base.strategy,
     render: base.render,
-    replace: base.replace,
+    replace: morphHTML,
     patch: base.patch,
     mount: base.mount,
     unmount: base.unmount,
@@ -101,6 +225,9 @@ export function createDOMExecutionFull(domCtx) {
  * DOM nodes survive updates — events, focus, and scroll are
  * naturally preserved without save/restore hooks.
  *
+ * Uses core's computeDelta for structural diffing and the
+ * upgraded patch method for marker-based DOM node resolution.
+ *
  * @param {Object} domCtx — same domCtx as createDOMExecutionFull
  * @returns {Object} ExecutionTarget-compatible object
  */
@@ -110,28 +237,11 @@ export function createDOMPatchExecution(domCtx) {
 
   return {
     ...full,
-    strategy: 'patch',
+    strategy: base.strategy, // 'patch' from core v0.9
 
-    patch(target, prevOutput, nextOutput, delta) {
-      // Use the html-level patchTemplate for DOM updates
-      if (delta?.parts) {
-        for (const part of delta.parts) {
-          if (part.type === 'text') {
-            // No markers — text patches need DOM tree walking.
-            // Prop and bool bindings use data attributes for targeting.
-          } else if (part.type === 'prop') {
-            const el = target.querySelector(`[data-up-prop="${part.name}:${part.id}"]`)
-            if (el) el[part.name] = part.value
-          } else if (part.type === 'bool') {
-            const el = target.querySelector(`[data-up-bool="${part.name}:${part.id}"]`)
-            if (el) {
-              if (part.value) el.setAttribute(part.name, '')
-              else el.removeAttribute(part.name)
-            }
-          }
-        }
-      }
-    },
+    // Core's patch method already handles marker-based resolution
+    // for text (<!-- up:id -->), prop ([data-up-prop]), and bool ([data-up-bool])
+    patch: base.patch,
 
     hooks: {
       ...full.hooks,

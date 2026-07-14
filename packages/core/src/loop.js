@@ -238,7 +238,7 @@ export function createLoop(config = {}) {
     try {
       result = maybeMarkPending(runFn(...execArgs))
     } catch (err) {
-      _handleError(event, err)
+      _handleError(event, err, args, envelope)
       return
     }
 
@@ -259,7 +259,7 @@ export function createLoop(config = {}) {
           }
         },
         (err) => {
-          _handleError(event, err)
+          _handleError(event, err, args, envelope)
         }
       )
     } else if (result !== undefined && result !== state) {
@@ -273,7 +273,7 @@ export function createLoop(config = {}) {
     }
   }
 
-  function _handleError(event, err) {
+  function _handleError(event, err, args, envelope) {
     const ec = errorConfig[event]
     if (!ec) {
       console.error(`[Uploop] Handler "${event}" error:`, err)
@@ -300,7 +300,16 @@ export function createLoop(config = {}) {
     if (retriesLeft > 0) {
       const maxRetries = ec.retry || 0
       const delay = Math.pow(2, maxRetries - retriesLeft) * 1000
-      setTimeout(() => send(event, ...[]), delay)
+      setTimeout(() => {
+        const retryEnvelope = envelope ? {
+          ...envelope,
+          id: `ev_${++_evCounter}`,
+          timestamp: Date.now(),
+          payload: args
+        } : null
+        if (retryEnvelope) _executeWithContext(event, args, retryEnvelope)
+        else send(event, ...args)
+      }, delay)
     } else {
       console.error(`[Uploop] Handler "${event}" failed, no retries left:`, err)
     }

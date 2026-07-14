@@ -111,7 +111,7 @@
 - [x] **State Machine** — traffic light FSM with auto-cycling
 - [x] **Animation** — bouncing ball (canvas), CSS transitions, keyframe animations
 - [x] **Async Data** — debounce, suspend, error retry, interruptible fetch, cache with SWR
-- [x] Demo gallery (19 examples in tabbed UI)
+- [x] Demo gallery (20 examples in tabbed UI)
 - [x] HyperGraph Inspector (8 debug tabs)
 
 ## Phase 8 — Polish 🟡
@@ -200,6 +200,17 @@
 - [x] eventChain() — causal chain tracing (opt-in)
 - [x] inferTemperature() — heuristic data classification (opt-in)
 
+
+## v0.10.0 — HTML Graph Renderer 🟡
+
+- [x] Plan graph renderer without breaking existing `html` and component syntax
+- [x] Add `loop(items, keyFn?, viewFn)` compatibility primitive
+- [x] Emit initial `graphParts` / `graphTemplate` metadata beside current output
+- [ ] Replace compatibility metadata with typed graph template IR
+- [ ] Add opt-in graph DOM execution with direct text/attr/event/list patching
+- [ ] Connect HyperGraph state-read edges to render nodes
+
+> 📖 See [Plan_uploop-html-graph-renderer-v0.10.md](./plan/Plan_uploop-html-graph-renderer-v0.10.md).
 ## v0.5.0 — Server-Side Toolset ✅
 
 - [x] `@uploop/sst` package — SSR, hydration, remote loops, services
