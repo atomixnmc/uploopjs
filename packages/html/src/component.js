@@ -47,20 +47,22 @@ function createWiredDOMExecution(loop, resources, options = {}) {
       patch: exec.patch,
       mount: exec.mount,
       unmount: exec.unmount,
-      hooks: exec.hooks
+      hooks: exec.hooks,
+      _buildGraph: exec._buildGraph || ((root) => {}),
     }
   }
 
-  // Replace strategy: use base DOM execution (no full — avoids double-processing)
+  // Replace strategy: use base DOM execution
   const base = createDOMExecution()
 
   return {
-    strategy: base.strategy,
+    strategy: 'replace',
     render: base.render,
     replace: morphHTML,
     patch: base.patch,
     mount: base.mount,
     unmount: base.unmount,
+    _buildGraph: base._buildGraph || ((root) => {}),
 
     hooks: {
       preReplace(target) {

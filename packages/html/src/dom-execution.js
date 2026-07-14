@@ -243,6 +243,9 @@ export function createDOMPatchExecution(domCtx) {
     // Core's patch method uses compact graph for O(1) DOM node resolution
     patch: base.patch,
 
+    // Pass through _buildGraph so component can index DOM before applyBindings strips attrs
+    _buildGraph: base._buildGraph,
+
     // Keep full hooks — the replace path (first render) still needs
     // event binding, attribute scanning, and resource restoration.
     // The patch path (subsequent renders) doesn't touch hooks at all.
