@@ -566,7 +566,8 @@ export function applyBindings(root, bindings, send, state) {
 function findMarker(root, id) {
   const doc = root.ownerDocument || (typeof document !== 'undefined' ? document : null)
   if (!doc) return null
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_COMMENT)
+  const SHOW_COMMENT = typeof NodeFilter !== 'undefined' ? NodeFilter.SHOW_COMMENT : 128
+  const walker = doc.createTreeWalker(root, SHOW_COMMENT)
   const target = 'up:' + id
   let node
   while ((node = walker.nextNode())) {

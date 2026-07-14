@@ -103,6 +103,9 @@
  */
 export function createDOMExecution() {
   /** @type {import('./types.js').ExecutionTarget} */
+  // Cache: id → resolved DOM node for O(1) subsequent patches
+  const _nodeCache = new Map()
+
   return {
     strategy: 'patch',
 
@@ -113,6 +116,7 @@ export function createDOMExecution() {
     },
 
     replace(target, output) {
+      _nodeCache.clear()
       target.innerHTML = output
     },
 
@@ -120,41 +124,50 @@ export function createDOMExecution() {
       if (!delta) return
       const mutations = []
 
-      // Text patches — resolve via comment markers <!-- up:id -->
+      // Text patches — resolve via comment markers <!-- up:id --> (cached)
       if (delta.textParts) {
         for (const part of delta.textParts) {
-          // Try the pre-resolved node (fast path from computeDelta)
           if (part.node) {
             mutations.push({ node: part.node, value: String(part.value ?? '') })
           } else {
-            // Walk DOM to find marker comment
-            const open = _findMarker(target, part.id)
-            if (open) {
-              const close = _findMarker(target, '/' + part.id)
-              let node = open.nextSibling
-              while (node && node !== close) {
-                if (node.nodeType === 3) { // TEXT_NODE
-                  mutations.push({ node, value: String(part.value ?? '') })
+            let node = _nodeCache.get('t:' + part.id)
+            if (!node) {
+              const open = _findMarker(target, part.id)
+              if (open) {
+                const close = _findMarker(target, '/' + part.id)
+                node = open.nextSibling
+                while (node && node !== close) {
+                  if (node.nodeType === 3) break // first text node
+                  node = node.nextSibling
                 }
-                node = node.nextSibling
+                if (node) _nodeCache.set('t:' + part.id, node)
               }
             }
+            if (node) mutations.push({ node, value: String(part.value ?? '') })
           }
         }
       }
 
-      // Prop patches — resolve via [data-up-prop="name:id"]
+      // Prop patches — resolve via [data-up-prop="name:id"] (cached)
       if (delta.propParts) {
         for (const part of delta.propParts) {
-          const el = part.el || target.querySelector('[data-up-prop="' + part.name + ':' + part.id + '"]')
+          let el = part.el || _nodeCache.get('p:' + part.id)
+          if (!el) {
+            el = target.querySelector('[data-up-prop="' + part.name + ':' + part.id + '"]')
+            if (el) _nodeCache.set('p:' + part.id, el)
+          }
           if (el) mutations.push({ el, name: part.name, value: part.value, type: 'prop' })
         }
       }
 
-      // Bool patches — resolve via [data-up-bool="name:id"]
+      // Bool patches — resolve via [data-up-bool="name:id"] (cached)
       if (delta.boolParts) {
         for (const part of delta.boolParts) {
-          const el = part.el || target.querySelector('[data-up-bool="' + part.name + ':' + part.id + '"]')
+          let el = part.el || _nodeCache.get('b:' + part.id)
+          if (!el) {
+            el = target.querySelector('[data-up-bool="' + part.name + ':' + part.id + '"]')
+            if (el) _nodeCache.set('b:' + part.id, el)
+          }
           if (el) mutations.push({ el, name: part.name, value: part.value, type: 'bool' })
         }
       }
@@ -240,7 +253,8 @@ export function createDOMExecution() {
 function _findMarker(root, id) {
   const doc = root.ownerDocument || (typeof document !== 'undefined' ? document : null)
   if (!doc) return null
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_COMMENT)
+  const SHOW_COMMENT = typeof NodeFilter !== 'undefined' ? NodeFilter.SHOW_COMMENT : 128
+  const walker = doc.createTreeWalker(root, SHOW_COMMENT)
   const target = 'up:' + id
   let node
   while ((node = walker.nextNode())) {

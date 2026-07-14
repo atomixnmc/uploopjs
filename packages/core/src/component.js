@@ -24,6 +24,7 @@ import { createLoop } from './loop.js'
 import { createSignal } from './signal.js'
 import { createResourceManager } from './component-resources.js'
 import { createFrameLoop } from './component-frame.js'
+import { computeDelta } from './execution.js'
 
 // ─── Snapshot Protocol ───────────────────────────────────────
 // Typed container for data passed between preReplace and postReplace hooks.
@@ -141,6 +142,8 @@ export function component(name, config = {}, lifecycleMethods = {}) {
 
   // ─── Mount ───────────────────────────────────────────────
 
+  let _prevResult = null
+
   function mountTo(element, props) {
     if (!element) return () => {}
 
@@ -148,7 +151,6 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       const result = renderView()
       if (!result) return
 
-      // Extract output + bindings from template object or string
       let htmlStr, bindings = []
       if (result && typeof result === 'object') {
         htmlStr = result.toString?.() ?? String(result)
@@ -157,15 +159,32 @@ export function component(name, config = {}, lifecycleMethods = {}) {
         htmlStr = String(result)
       }
 
-      // Execution pipeline: preReplace → replace → postReplace
-      const baseSnapshot = _exec.hooks?.preReplace?.(element) ?? {}
-      const snapshot = createSnapshot({ ...baseSnapshot, bindings })
-
-      _exec.replace(element, htmlStr)
-
-      if (_exec.hooks?.postReplace) {
-        _exec.hooks.postReplace(element, snapshot)
+      // GDOM Surgery: patch when possible, replace on structural changes
+      if (_exec.strategy === 'patch' && _prevResult && _exec.patch) {
+        const delta = computeDelta(_prevResult, result)
+        if (delta?.hasChanges) {
+          if (delta.addedParts?.length || delta.removedParts?.length) {
+            // Structural change — full replace
+            const snap = createSnapshot({ ...(_exec.hooks?.preReplace?.(element) ?? {}), bindings })
+            _exec.replace(element, htmlStr)
+            if (_exec.hooks?.postReplace) _exec.hooks.postReplace(element, snap)
+          } else {
+            // Value-only change — surgical patch
+            _exec.patch(element, _prevResult, result, delta)
+          }
+          _prevResult = result
+          return
+        }
+        // No changes — skip DOM update
+        _prevResult = result
+        return
       }
+
+      // Full replace: first render, replace strategy, or no patch method
+      const snap = createSnapshot({ ...(_exec.hooks?.preReplace?.(element) ?? {}), bindings })
+      _exec.replace(element, htmlStr)
+      if (_exec.hooks?.postReplace) _exec.hooks.postReplace(element, snap)
+      _prevResult = result
     }
 
     if (props) loop.set((prev) => ({ ...prev, ...props }))
@@ -182,6 +201,7 @@ export function component(name, config = {}, lifecycleMethods = {}) {
       element.removeAttribute?.('data-up-component')
       _exec.unmount(element)
       resources.clear()
+      _prevResult = null
     }
   }
 
