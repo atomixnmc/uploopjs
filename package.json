@@ -11,8 +11,7 @@
     "dev": "vite",
     "build": "pnpm -r --if-present build",
     "preview": "vite preview",
-    "test": "vitest",
-    "sst:demo": "pnpm --filter uploop-server-examples dev"
+    "test": "vitest"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

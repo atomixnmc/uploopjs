@@ -8,7 +8,7 @@ const pkg = (name) => resolve(rootDir, `packages/${name}/src/index.js`);
 export default defineConfig({
   root: "examples",
   server: {
-    port: 3000,
+    port: 3100,
     open: true,
   },
   resolve: {
@@ -22,7 +22,6 @@ export default defineConfig({
       "@uploop/html": pkg("html"),
       "@uploop/router": pkg("router"),
       "@uploop/schema": pkg("schema"),
-      "@uploop/sst": pkg("sst"),
       "@uploop/state-machine": pkg("state-machine"),
       "@uploop/store": pkg("store"),
       "@uploop/stream": pkg("stream"),

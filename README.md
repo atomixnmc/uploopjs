@@ -18,6 +18,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple" alt="License"></a>
 </p>
 
+> **v0.10.0 (2026-07-21):** `@uploop/sst` moved to **[Uploop Server](https://github.com/atomixnmc/uploop-server)**. See [SPLIT.md](./docs/SPLIT.md).
+
 ---
 
 **Uploop** is a graph-native, AI-readable application framework where data shapes, UI components, execution strategies, and wire formats are declared as a single **HyperGraph** — inspectable, optimizable, and translatable by both humans and AI.
@@ -89,7 +91,7 @@ toGraphQL(User)          // GraphQL SDL
 - **CSP-safe** — `@click` uses `addEventListener`, no inline `onclick`
 - **WebComponent bridge** — `defineElement()` produces standard custom elements
 - **12 packages** — core, html, schema, store, flows, stream, router, css, state-machine, sst, devutils, auth
-- **Server-side rendering** — `renderToString()` + `hydrate()` in `@uploop/sst`
+- **Server-side rendering** — now in [Uploop Server](https://github.com/atomixnmc/uploop-server)
 - **Remote loops** — `createRemoteLoop()` bridges client-server state over WebSocket
 - **Service layer** — FeathersJS-style CRUD + real-time events on graph data nodes
 
@@ -129,9 +131,9 @@ No manual `setTimeout`, `clearTimeout`, `AbortController`, loading flags, or err
 | `@uploop/store` | External store, selectors, derived, persist, storeFromEntity | 6 KB | ✅ |
 | `@uploop/flows` | 24 pre-tuned profiles, 10 strategies, pipelines, queues | ~10 KB | ✅ v0.7 |
 | `@uploop/stream` | Binary codec, zero-copy, self-framing, reader/writer | ~8 KB | ✅ v0.8 |
-| `@uploop/router` | Route matching, guards, layouts, lazy loading | 9 KB | ✅ |
+| `@uploop/router` | Route matching, guards, layouts, lazy loading, multi-mode dispatch |
 | `@uploop/css` | Utility CSS, theme tokens, variants, animations | 53 KB | ✅ |
-| `@uploop/sst` | SSR, hydration, remote loops, FeathersJS-style services | — | ✅ |
+| **[`@uploop/sst`](https://github.com/atomixnmc/uploop-server)** | SSR, hydration, server framework — moved to uploop-server | — | ✅ v0.10 |
 | `@uploop/devutils` | HyperGraph Inspector, event capture, debug panel | — | ✅ |
 | `@uploop/auth` | Auth as HyperGraph nodes, JWT/OAuth strategies | — | 🟡 v0.9 |
 | `@uploop/state-machine` | Finite state machine, entry/exit hooks, guards | 4 KB | ✅ |
@@ -249,14 +251,15 @@ Open `http://localhost:3000` — you'll see the demo gallery.
 
 🌐 **Live demo:** [atomixnmc.github.io/uploopjs](https://atomixnmc.github.io/uploopjs/)
 
-## Server-Side Toolset (SST)
+## Server-Side Toolkit (SST)
 
-Uploop ships a **battery-included server framework** where HTTP, WebSocket, binary streaming, SQLite, and multiplayer games are all wired through the same HyperGraph model.
+Moved to **[Uploop Server](https://github.com/atomixnmc/uploop-server)** — the standalone server framework. See [docs/SPLIT.md](./docs/SPLIT.md).
 
 ```bash
-cd server-examples
+git clone https://github.com/atomixnmc/uploop-server.git
+cd uploop-server
 pnpm install
-pnpm dev          # node --watch → instant hot reload
+pnpm dev          # http://localhost:3500
 ```
 
 Open **http://localhost:3500** — 10 pages on one port:

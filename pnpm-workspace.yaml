@@ -1,6 +1,5 @@
 packages:
   - "packages/*"
   - "examples/*"
-  - "server-examples"
 allowBuilds:
   better-sqlite3: true

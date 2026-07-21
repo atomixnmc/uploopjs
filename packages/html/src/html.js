@@ -97,6 +97,24 @@ function trackRawTextDepth(str, depth) {
   while (i < lower.length) {
     const lt = lower.indexOf('<', i)
     if (lt === -1) break
+
+    // SVG elements: <up-t> is an HTML element, invalid inside SVG namespace.
+    // SVG text content must be plain text nodes or <tspan> elements only.
+    if (lower.startsWith('<svg', lt)) {
+      const next = lower[lt + 4]
+      if (!next || next === '>' || next === ' ' || next === '\n' || next === '\r' || next === '\t') {
+        depth++
+      }
+      i = lt + 4
+      continue
+    }
+    if (lower.startsWith('</svg', lt)) {
+      depth = Math.max(0, depth - 1)
+      i = lt + 6
+      continue
+    }
+    if (depth > 0) { i = lt + 1; continue } // inside SVG, skip other tag checks
+
     // Check for closing tag first (so </style> doesn't count as opening)
     if (lower.startsWith('</style', lt)) {
       depth = Math.max(0, depth - 1)
@@ -105,7 +123,6 @@ function trackRawTextDepth(str, depth) {
       depth = Math.max(0, depth - 1)
       i = lt + 9
     } else if (lower.startsWith('<style', lt)) {
-      // Only count if it's actually a tag (next char is >, space, or /)
       const next = lower[lt + 6]
       if (!next || next === '>' || next === ' ' || next === '\n' || next === '\r' || next === '\t') {
         depth++
@@ -156,7 +173,11 @@ function detectBindingSuffix(str) {
   let nameEnd = end
   while (end >= 0 && isWord(str.charCodeAt(end))) end--
 
-  // end is at the char before the name, or -1
+  // Skip whitespace between the prefix char and the binding name
+  // e.g. "<button\n  @click=" → skip the space/newline before '@'
+  while (end >= 0 && isSpace(str.charCodeAt(end))) end--
+
+  // end is at the prefix char (@ . ? :), or -1
   if (end < 0) return null
 
   const prefixChar = str.charCodeAt(end)
@@ -346,12 +367,18 @@ function resolveValue(value, bindings, idOffset, graphParts, parts) {
     const nestedBindings = value.bindings || []
     const nestedParts = value.parts || []
 
-    // Relabel part IDs from nested templates
+    // Relabel part IDs from nested templates.
+    // Build a shared oldId→newId map so bindings and parts that share
+    // the same original ID (e.g. @click is both a part and a binding)
+    // get the same relabeled ID instead of diverging.
+    const sharedIds = new Map()
+
     if (nestedParts.length > 0) {
       const oldToNewParts = new Map()
       for (const p of nestedParts) {
         const oldId = p.id
-        const newId = 'b' + (++idOffset.count)
+        const newId = sharedIds.get(oldId) || ('b' + (++idOffset.count))
+        sharedIds.set(oldId, newId)
         oldToNewParts.set(oldId, newId)
         // Push relabeled part to outer parts (preserving _inAttr flag)
         const relabeled = { ...p, id: newId }
@@ -389,7 +416,8 @@ function resolveValue(value, bindings, idOffset, graphParts, parts) {
         const oldToNew = new Map()
         for (const b of nestedBindings) {
           const oldId = b.id
-          const newId = 'b' + (++idOffset.count)
+          const newId = sharedIds.get(oldId) || ('b' + (++idOffset.count))
+          sharedIds.set(oldId, newId)
           oldToNew.set(oldId, newId)
           b.id = newId
         }
@@ -414,12 +442,14 @@ function resolveValue(value, bindings, idOffset, graphParts, parts) {
       const oldToNew = new Map()
       for (const b of nestedBindings) {
         const oldId = b.id
-        const newId = 'b' + (++idOffset.count)
+        const newId = sharedIds.get(oldId) || ('b' + (++idOffset.count))
+        sharedIds.set(oldId, newId)
         oldToNew.set(oldId, newId)
         b.id = newId
       }
       bindings.push(...nestedBindings)
-      // Rewrite IDs in the nested template HTML
+      // Rewrite IDs in the nested template HTML.
+      // Two-phase to prevent cascading.
       let html = value.toString()
       const TEMP = '\x00'
       for (const [oldId, newId] of oldToNew) {
@@ -543,29 +573,18 @@ export function html(strings, ...values) {
           } else {
             const id = 'b' + (++idOffset.count)
             const strVal = String(v ?? '')
-            if (isInsideAttribute(_accPrefix) || _rawTextDepth > 0) {
-              html += strVal
-            } else {
-              html += '<up-t data-up-id="' + id + '">' + strVal + '</up-t>'
-            }
+            html += strVal
             parts.push({ id, type: 'text', value: v })
             graphParts.push({ id, type: 'text', value: v })
           }
         }
         fragments.push(html)
       } else {
-        // Plain scalar — record value for patch diffing.
-        // Only wrap in markers for text content, not attribute values
-        // (style, class, SVG attrs, aria-label, etc. would break).
+        // Plain scalar — plain text, no wrappers
         const id = 'b' + (++idOffset.count)
         const strVal = String(value ?? '')
-        if (isInsideAttribute(_accPrefix) || _rawTextDepth > 0) {
-          fragments.push(str + strVal)
-          parts.push({ id, type: 'text', value, _inAttr: true })
-        } else {
-          fragments.push(str + '<up-t data-up-id="' + id + '">' + strVal + '</up-t>')
-          parts.push({ id, type: 'text', value })
-        }
+        fragments.push(str + strVal)
+        parts.push({ id, type: 'text', value })
         graphParts.push({ id, type: 'text', value })
       }
     } else {

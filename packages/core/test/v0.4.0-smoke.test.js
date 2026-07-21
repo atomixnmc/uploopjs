@@ -127,13 +127,10 @@ describe('v0.4.0 — Template Parts', () => {
     expect(result.parts.find(p => p.type === 'bool')).toBeTruthy()
   })
 
-  it('template wraps text in up-t elements for compact graph (v0.9)', () => {
+  it('template string does NOT contain markers (backward compat)', () => {
     const result = html`<div>Count: ${42}</div>`
-    // v0.9: text values wrapped in <up-t data-up-id="bN"> for O(1) compact graph lookup
-    expect(result.template).toContain('<up-t data-up-id="')
-    expect(result.template).toContain('42')
-    expect(result.template).toContain('</up-t>')
-    expect(result.template).toContain('Count: ')
+    expect(result.template).not.toContain('<!--up:')
+    expect(result.template).toContain('Count: 42')
   })
 
   it('parts values() getter returns value map', () => {

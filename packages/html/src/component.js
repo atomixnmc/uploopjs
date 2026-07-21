@@ -22,7 +22,7 @@ import { createDOMPatchExecution, morphHTML } from './dom-execution.js'
  * @returns {Object} ExecutionTarget-compatible object
  */
 function createWiredDOMExecution(loop, resources, options = {}) {
-  const strategy = options.strategy || 'patch'
+  const strategy = options.strategy || 'replace'
 
   if (strategy === 'patch') {
     const domCtx = {

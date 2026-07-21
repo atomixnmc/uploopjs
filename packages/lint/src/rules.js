@@ -64,8 +64,8 @@ export function checkBuildRules(source, errors, warnings) {
     }
   }
 
-  // 15. window/document used without SSR guard in SST files
-  if ((source.includes('@uploop/sst') || source.includes('renderToString')) &&
+  // 15. window/document used without SSR guard
+  if (source.includes('renderToString') &&
       (/\bwindow\b/.test(source) || /\bdocument\b/.test(source)) &&
       !source.includes('typeof window') && !source.includes('isBrowser')) {
     warnings.push({

@@ -1,19 +1,43 @@
 {
   "name": "@uploop/router",
-  "version": "0.9.0",
-  "description": "Uploop router — functional route matching and navigation",
+  "version": "0.10.0",
+  "description": "Uploop router — unified multi-mode dispatch: pages, events, services, streams",
   "type": "module",
   "main": "./src/index.js",
   "exports": {
     ".": {
       "import": "./src/index.js"
+    },
+    "./page": {
+      "import": "./src/page-router.js"
+    },
+    "./event": {
+      "import": "./src/event-router.js"
+    },
+    "./service": {
+      "import": "./src/service-router.js"
+    },
+    "./stream": {
+      "import": "./src/stream-router.js"
+    },
+    "./middleware": {
+      "import": "./src/middleware.js"
+    },
+    "./matcher": {
+      "import": "./src/matcher.js"
+    },
+    "./context": {
+      "import": "./src/context.js"
     }
   },
   "files": [
     "src"
   ],
+  "scripts": {
+    "test": "vitest"
+  },
   "dependencies": {
     "@uploop/core": "workspace:*",
-        "@uploop/html": "workspace:*"
+    "@uploop/html": "workspace:*"
   }
 }

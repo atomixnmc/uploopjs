@@ -107,7 +107,7 @@ export function createDOMExecution() {
   let _compactGraph = null
 
   return {
-    strategy: 'patch',
+    strategy: 'replace',
 
     render(template, state) {
       if (typeof template === 'string') return template
